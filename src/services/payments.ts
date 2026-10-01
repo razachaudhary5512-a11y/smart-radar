@@ -1,127 +1,51 @@
 /**
  * src/services/payments.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Payment gateway stubs — JazzCash / EasyPaisa.
+ * JazzCash / EasyPaisa — NOT YET ACTIVATED. Every call throws a clear error.
  *
- * ⚠️  NOT YET IMPLEMENTED — all functions throw a clear error if called.
- *     This file exists to give the rest of the codebase a stable import path
- *     for future payment logic. Implement each function when payments go live.
- *
- * ACTIVATION CHECKLIST (when you're ready to go live):
- *   1. Add real keys to .env:
- *        VITE_JAZZCASH_MERCHANT_ID=your_merchant_id
- *        VITE_JAZZCASH_PASSWORD=your_integration_password
- *   2. Create a Supabase Edge Function (e.g., `process-payment`) that holds
- *      the full merchant credentials server-side and calls the JazzCash/EasyPaisa
- *      REST API — never call payment APIs directly from the browser.
- *   3. Replace the `throw NOT_IMPLEMENTED` lines below with real implementations.
- *   4. Add webhook handling for async payment status callbacks.
- *
- * Usage:
- *   import { initiateJazzCashPayment, isPaymentsConfigured } from '@/services/payments';
+ * ACTIVATION CHECKLIST
+ *   1. Store merchant credentials as Edge Function secrets (never VITE_ vars):
+ *        supabase secrets set JAZZCASH_MERCHANT_ID=... JAZZCASH_PASSWORD=... JAZZCASH_INTEGRITY_SALT=...
+ *   2. Create + deploy a `process-payment` Edge Function that signs requests
+ *      and calls the gateway server-side.
+ *   3. Add a webhook Edge Function for async payment status callbacks that
+ *      marks posts as featured (posts.is_featured) via the service role.
+ *   4. Set VITE_ENABLE_PAYMENTS=true and implement the functions below by
+ *      invoking the Edge Function.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-
 import { ENV } from '@/config/env';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const NOT_IMPLEMENTED = (fn: string) =>
-  new Error(
-    `[Smart Radar / payments] ${fn}() is not yet implemented. ` +
-    `Payments are intentionally disabled until the user base is established. ` +
-    `See src/services/payments.ts for the activation checklist.`
-  );
-
-/** True if JazzCash merchant credentials are present in the environment. */
-export function isPaymentsConfigured(): boolean {
-  return !!(ENV.payments.jazzCashMerchantId && ENV.payments.jazzCashPassword);
-}
-
-// ── Type definitions ──────────────────────────────────────────────────────────
+export type PaymentProvider = 'jazzcash' | 'easypaisa';
 
 export interface PaymentRequest {
-  /** Amount in PKR (Pakistani Rupees). */
   amountPKR: number;
-  /** Your internal order / transaction reference. */
   orderId: string;
-  /** Short description shown on the payment screen. */
   description: string;
-  /** Customer's MSISDN (phone number) for JazzCash mobile wallet payments. */
   customerMsisdn?: string;
-  /** Customer email (optional, for receipts). */
-  customerEmail?: string;
 }
 
 export interface PaymentResult {
   success: boolean;
   transactionId?: string;
-  /** Raw response from the payment gateway (for debugging). */
-  raw?: unknown;
   error?: string;
 }
 
-// ── JazzCash ──────────────────────────────────────────────────────────────────
-
-/**
- * Initiates a JazzCash payment by calling the server-side Edge Function.
- *
- * @stub  Throws "not yet implemented" until payments are activated.
- */
-export async function initiateJazzCashPayment(
-  _request: PaymentRequest
-): Promise<PaymentResult> {
-  throw NOT_IMPLEMENTED('initiateJazzCashPayment');
+export function isPaymentsEnabled(): boolean {
+  return ENV.features.payments;
 }
 
-/**
- * Checks the status of an existing JazzCash transaction.
- *
- * @stub  Throws "not yet implemented" until payments are activated.
- */
-export async function checkJazzCashTransactionStatus(
-  _transactionId: string
-): Promise<PaymentResult> {
-  throw NOT_IMPLEMENTED('checkJazzCashTransactionStatus');
+const notImplemented = (fn: string) =>
+  new Error(`[Smart Radar / payments] ${fn}() is not implemented yet. See src/services/payments.ts for the activation checklist.`);
+
+export async function pay(provider: PaymentProvider, request: PaymentRequest): Promise<PaymentResult> {
+  void provider;
+  void request;
+  throw notImplemented('pay');
 }
 
-// ── EasyPaisa ─────────────────────────────────────────────────────────────────
-
-/**
- * Initiates an EasyPaisa payment.
- *
- * @stub  Throws "not yet implemented" until payments are activated.
- */
-export async function initiateEasyPaisaPayment(
-  _request: PaymentRequest
-): Promise<PaymentResult> {
-  throw NOT_IMPLEMENTED('initiateEasyPaisaPayment');
-}
-
-/**
- * Verifies an EasyPaisa callback/webhook payload.
- *
- * @stub  Throws "not yet implemented" until payments are activated.
- */
-export async function verifyEasyPaisaCallback(
-  _payload: unknown
-): Promise<{ valid: boolean; transactionId?: string }> {
-  throw NOT_IMPLEMENTED('verifyEasyPaisaCallback');
-}
-
-// ── Generic facade ────────────────────────────────────────────────────────────
-
-export type PaymentProvider = 'jazzcash' | 'easypaisa';
-
-/**
- * High-level payment entry-point. Routes to the correct provider.
- *
- * @stub  Throws "not yet implemented" until payments are activated.
- */
-export async function pay(
-  provider: PaymentProvider,
-  _request: PaymentRequest
-): Promise<PaymentResult> {
-  void provider; // suppress unused warning until implemented
-  throw NOT_IMPLEMENTED('pay');
+export async function checkTransactionStatus(provider: PaymentProvider, transactionId: string): Promise<PaymentResult> {
+  void provider;
+  void transactionId;
+  throw notImplemented('checkTransactionStatus');
 }

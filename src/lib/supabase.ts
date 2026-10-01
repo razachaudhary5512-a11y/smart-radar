@@ -1,12 +1,43 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { ENV, isSupabaseConfigured } from '@/config/env';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+let client: SupabaseClient | null = null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
+/**
+ * Lazily-created Supabase client. It is only instantiated once live mode is
+ * chosen, so demo mode never makes network calls (e.g. token refreshes) to an
+ * unreachable project.
+ */
+export function getSupabase(): SupabaseClient | null {
+  if (!isSupabaseConfigured) return null;
+  if (!client) {
+    client = createClient(ENV.supabase.url!, ENV.supabase.anonKey!, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    });
+  }
+  return client;
+}
+
+export function requireSupabase(): SupabaseClient {
+  const c = getSupabase();
+  if (!c) throw new Error('Supabase is not configured.');
+  return c;
+}
+
+/** Quick reachability probe so a dead/paused project falls back to demo mode instead of hanging. */
+export async function pingSupabase(timeoutMs = 4500): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${ENV.supabase.url}/auth/v1/health`, {
+      headers: { apikey: ENV.supabase.anonKey! },
+      signal: ctrl.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}

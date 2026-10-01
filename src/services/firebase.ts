@@ -75,7 +75,7 @@ export async function initFirebase(): Promise<import('firebase/app').FirebaseApp
  * @returns  The FCM registration token (store this on your backend / Supabase
  *           user profile to target push notifications), or null if unavailable.
  */
-export async function requestNotificationPermission(vapidKey?: string): Promise<string | null> {
+export async function requestNotificationPermission(vapidKey: string | undefined = ENV.firebase.vapidKey): Promise<string | null> {
   if (!isFirebaseConfigured()) {
     console.warn('[Smart Radar / firebase] requestNotificationPermission() skipped — Firebase not configured.');
     return null;
@@ -97,13 +97,29 @@ export async function requestNotificationPermission(vapidKey?: string): Promise<
       return null;
     }
 
-    const { getMessaging, getToken } = await import('firebase/messaging');
+    const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
+    if (!(await isSupported())) {
+      console.warn('[Smart Radar / firebase] Push messaging is not supported in this browser.');
+      return null;
+    }
+    if (!vapidKey) {
+      console.warn('[Smart Radar / firebase] VITE_FIREBASE_VAPID_KEY is missing — web push needs it (Firebase → Cloud Messaging → Web Push certificates).');
+      return null;
+    }
 
     if (!_messaging) {
       _messaging = getMessaging(app);
     }
 
-    const token = await getToken(_messaging, vapidKey ? { vapidKey } : undefined);
+    // Background notifications need the service worker; the public config goes in its URL.
+    const f = ENV.firebase;
+    const qs = new URLSearchParams({
+      apiKey: f.apiKey!, authDomain: f.authDomain!, projectId: f.projectId!,
+      storageBucket: f.storageBucket!, messagingSenderId: f.messagingSenderId!, appId: f.appId!,
+    });
+    const registration = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}firebase-messaging-sw.js?${qs}`);
+
+    const token = await getToken(_messaging, { vapidKey, serviceWorkerRegistration: registration });
     console.info('[Smart Radar / firebase] ✅ FCM registration token obtained.');
     return token;
   } catch (err) {

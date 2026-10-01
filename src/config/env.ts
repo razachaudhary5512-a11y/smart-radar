@@ -2,65 +2,66 @@
  * src/config/env.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Single source of truth for all environment variables.
- * The rest of the app should NEVER read `import.meta.env` directly —
- * always import from here instead.
+ * The rest of the app must NEVER read `import.meta.env` directly.
+ *
+ * SECURITY: every `VITE_*` value is compiled into the public JavaScript bundle.
+ * Only put PUBLIC values here (URLs, anon keys, feature flags). Server secrets
+ * such as Twilio auth tokens or JazzCash passwords belong in Supabase Edge
+ * Function secrets (`supabase secrets set ...`), never in this file.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// ── Supabase ──────────────────────────────────────────────────────────────────
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const env = import.meta.env;
 
-// ── Google Maps ───────────────────────────────────────────────────────────────
-export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+const str = (v: unknown): string | undefined => {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t.length ? t : undefined;
+};
 
-// ── Firebase ──────────────────────────────────────────────────────────────────
-export const FIREBASE_API_KEY = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
-export const FIREBASE_AUTH_DOMAIN = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined;
-export const FIREBASE_PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
-export const FIREBASE_STORAGE_BUCKET = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined;
-export const FIREBASE_MESSAGING_SENDER_ID = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined;
-export const FIREBASE_APP_ID = import.meta.env.VITE_FIREBASE_APP_ID as string | undefined;
+export type DataMode = 'auto' | 'demo' | 'live';
 
-// ── Twilio (SMS/OTP) ──────────────────────────────────────────────────────────
-// NOTE: Supabase's built-in phone auth is the preferred OTP method.
-// These are only used if you switch to a custom Twilio flow.
-export const TWILIO_ACCOUNT_SID = import.meta.env.VITE_TWILIO_ACCOUNT_SID as string | undefined;
-export const TWILIO_AUTH_TOKEN = import.meta.env.VITE_TWILIO_AUTH_TOKEN as string | undefined;
-export const TWILIO_PHONE_NUMBER = import.meta.env.VITE_TWILIO_PHONE_NUMBER as string | undefined;
-
-// ── Payments — JazzCash / EasyPaisa ──────────────────────────────────────────
-// Intentionally empty — payment keys are not activated yet.
-export const JAZZCASH_MERCHANT_ID = import.meta.env.VITE_JAZZCASH_MERCHANT_ID as string | undefined;
-export const JAZZCASH_PASSWORD = import.meta.env.VITE_JAZZCASH_PASSWORD as string | undefined;
-
-// ── Typed config bundle ───────────────────────────────────────────────────────
-/** Full typed config object — prefer this for service initialization. */
 export const ENV = {
+  /** 'auto' (default) uses Supabase when reachable, otherwise demo data. */
+  dataMode: ((str(env.VITE_DATA_MODE) as DataMode | undefined) ?? 'auto') as DataMode,
   supabase: {
-    url: SUPABASE_URL,
-    anonKey: SUPABASE_ANON_KEY,
+    url: str(env.VITE_SUPABASE_URL),
+    anonKey: str(env.VITE_SUPABASE_ANON_KEY),
   },
   googleMaps: {
-    apiKey: GOOGLE_MAPS_API_KEY,
+    apiKey: str(env.VITE_GOOGLE_MAPS_API_KEY),
   },
   firebase: {
-    apiKey: FIREBASE_API_KEY,
-    authDomain: FIREBASE_AUTH_DOMAIN,
-    projectId: FIREBASE_PROJECT_ID,
-    storageBucket: FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: FIREBASE_MESSAGING_SENDER_ID,
-    appId: FIREBASE_APP_ID,
+    apiKey: str(env.VITE_FIREBASE_API_KEY),
+    authDomain: str(env.VITE_FIREBASE_AUTH_DOMAIN),
+    projectId: str(env.VITE_FIREBASE_PROJECT_ID),
+    storageBucket: str(env.VITE_FIREBASE_STORAGE_BUCKET),
+    messagingSenderId: str(env.VITE_FIREBASE_MESSAGING_SENDER_ID),
+    appId: str(env.VITE_FIREBASE_APP_ID),
+    vapidKey: str(env.VITE_FIREBASE_VAPID_KEY),
   },
-  twilio: {
-    accountSid: TWILIO_ACCOUNT_SID,
-    authToken: TWILIO_AUTH_TOKEN,
-    phoneNumber: TWILIO_PHONE_NUMBER,
-  },
-  payments: {
-    jazzCashMerchantId: JAZZCASH_MERCHANT_ID,
-    jazzCashPassword: JAZZCASH_PASSWORD,
+  features: {
+    /** Custom SMS via the `send-sms` Edge Function (Twilio secrets live server-side). */
+    customSms: str(env.VITE_ENABLE_CUSTOM_SMS) === 'true',
+    /** JazzCash / EasyPaisa via the `process-payment` Edge Function. */
+    payments: str(env.VITE_ENABLE_PAYMENTS) === 'true',
   },
 } as const;
+
+/** Path the app is served from: "/" normally, "/smart-radar/" on GitHub Pages. */
+export const BASE_PATH = import.meta.env.BASE_URL;
+
+/**
+ * Absolute, shareable link to a page in the app. Uses VITE_PUBLIC_URL when set
+ * (needed inside the Android app, whose own origin is https://localhost).
+ */
+export function appUrl(path = ''): string {
+  const root = str(env.VITE_PUBLIC_URL) ?? `${window.location.origin}${BASE_PATH}`;
+  return `${root.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+}
+
+export const isSupabaseConfigured = Boolean(
+  ENV.supabase.url && ENV.supabase.anonKey && !/YOUR_PROJECT|YOUR_SUPABASE/i.test(ENV.supabase.url + ENV.supabase.anonKey)
+);
 
 export type AppEnv = typeof ENV;

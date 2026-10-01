@@ -1,283 +1,137 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from './supabase';
-import type { Profile } from './types';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useApi, onDataChange, type SessionUser } from '@/data';
+import type { Profile, ProfilePatch } from './types';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OTP rate-limit constants  (item 4)
-// Max 5 OTP requests per phone per 60-minute window
-// ─────────────────────────────────────────────────────────────────────────────
-const OTP_MAX_PER_HOUR = 5;
-const OTP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-
-const PROFILE_STORAGE_KEY = 'smart_radar_user_profile_v4';
-
-function getInitialProfile(): Profile {
-  try {
-    const saved = localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch {}
-
-  const defaultUser: Profile = {
-    id: `user-${Date.now()}`,
-    phone: '',
-    display_name: 'Radar Citizen',
-    avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    is_business: false,
-    is_admin: false,
-    cnic_number: null,
-    verification_status: 'approved',
-    verification_date: new Date(Date.now() - 120 * 86400000).toISOString(),
-    verification_expiry: new Date(Date.now() + 65 * 86400000).toISOString(),
-    verification_history: [],
-    trust_score: 100,
-    radius_km: 3,
-    saved_locations: [{ label: 'Home Area', lat: 24.8607, lng: 67.0011 }],
-    watched_areas: [],
-    pinned_categories: ['community_feed', 'home_services', 'jobs_internships', 'second_hand'],
-    muted_categories: [],
-    digest_categories: ['local_deals', 'local_event', 'jobs_internships', 'property_rent'],
-    digest_enabled: true,
-    digest_time: '20:00',
-    blocked_users: [],
-    theme: 'light',
-    created_at: new Date().toISOString(),
-  };
-
-  try {
-    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(defaultUser));
-  } catch {}
-  return defaultUser;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Auth context interface
-// ─────────────────────────────────────────────────────────────────────────────
 interface AuthContextValue {
-  session: Session | null;
+  user: SessionUser | null;
   profile: Profile | null;
+  /** True until the initial session check completes. */
   loading: boolean;
+  /** Derived from the server-side profile only — never from local state. */
   isAdmin: boolean;
-  signInWithPhone: (phone: string) => Promise<{ error: string | null }>;
-  verifyOtp: (phone: string, token: string) => Promise<{ error: string | null }>;
-  /** Admin-specific: email + password sign-in (item 3) */
-  signInAdminWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
-  signOut: () => Promise<void>;
-  refreshProfile: (userId?: string) => Promise<void>;
-  updateProfile: (updates: Partial<Profile>) => Promise<void>;
+  /** App owner (super-admin). */
+  isOwner: boolean;
+  sendOtp(phoneE164: string): Promise<{ error: string | null; devCode?: string }>;
+  verifyOtp(phoneE164: string, code: string): Promise<{ error: string | null }>;
+  sendEmailOtp(email: string): Promise<{ error: string | null; devCode?: string }>;
+  verifyEmailOtp(email: string, code: string): Promise<{ error: string | null }>;
+  adminSignIn(email: string, password: string): Promise<{ error: string | null }>;
+  signOut(): Promise<void>;
+  refreshProfile(): Promise<void>;
+  updateProfile(patch: ProfilePatch): Promise<void>;
+  /** Opens the sign-in sheet; resolves true once the user is signed in. */
+  requireAuth(reason?: string): Promise<boolean>;
+  authPrompt: { open: boolean; reason?: string };
+  closeAuthPrompt(signedIn: boolean): void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OTP rate-limiting helpers  (item 4)
-// ─────────────────────────────────────────────────────────────────────────────
-async function checkAndIncrementOtpLimit(phone: string): Promise<{ allowed: boolean; remaining: number }> {
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - OTP_WINDOW_MS);
-
-  // Fetch existing record for this phone in the current window
-  const { data, error } = await supabase
-    .from('otp_rate_limit')
-    .select('id, attempts, window_start')
-    .eq('phone', phone)
-    .gte('window_start', windowStart.toISOString())
-    .order('window_start', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    // On DB error, fail open (allow) to avoid locking users out
-    console.warn('[OTP Rate Limit] DB error, failing open:', error.message);
-    return { allowed: true, remaining: OTP_MAX_PER_HOUR };
-  }
-
-  if (!data) {
-    // First request in this window — create a new record
-    await supabase.from('otp_rate_limit').insert({ phone, attempts: 1, window_start: now.toISOString() });
-    return { allowed: true, remaining: OTP_MAX_PER_HOUR - 1 };
-  }
-
-  if (data.attempts >= OTP_MAX_PER_HOUR) {
-    return { allowed: false, remaining: 0 };
-  }
-
-  // Increment existing record
-  await supabase
-    .from('otp_rate_limit')
-    .update({ attempts: data.attempts + 1 })
-    .eq('id', data.id);
-
-  return { allowed: true, remaining: OTP_MAX_PER_HOUR - (data.attempts + 1) };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(getInitialProfile);
-  const [loading, setLoading] = useState(false);
+  const api = useApi();
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authPrompt, setAuthPrompt] = useState<{ open: boolean; reason?: string }>({ open: false });
+  const waiters = useRef<((ok: boolean) => void)[]>([]);
 
-  // Derived convenience flag (item 3)
-  const isAdmin = Boolean(profile?.is_admin);
+  const loadProfile = useCallback(
+    async (u: SessionUser | null) => {
+      if (!u) {
+        setProfile(null);
+        return;
+      }
+      try {
+        setProfile(await api.auth.getProfile(u.id));
+      } catch (e) {
+        console.warn('[Smart Radar] Could not load profile', e);
+      }
+    },
+    [api]
+  );
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        setSession(data.session);
-        refreshProfile(data.session.user.id);
-      }
+    let alive = true;
+    api.auth.getSession().then(async (u) => {
+      if (!alive) return;
+      setUser(u);
+      await loadProfile(u);
+      if (alive) setLoading(false);
     });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      if (newSession?.user) {
-        refreshProfile(newSession.user.id);
-      }
+    const off = api.auth.onChange((u) => {
+      setUser(u);
+      loadProfile(u);
     });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [api, loadProfile]);
 
-    return () => listener.subscription.unsubscribe();
+  // Keep profile fresh after verification submissions / admin reviews.
+  useEffect(
+    () =>
+      onDataChange((scope) => {
+        if (scope === 'profile' || scope === 'admin') loadProfile(user);
+      }),
+    [user, loadProfile]
+  );
+
+  const updateProfile = useCallback(
+    async (patch: ProfilePatch) => {
+      if (!user) return;
+      setProfile((p) => (p ? { ...p, ...patch } : p)); // optimistic
+      try {
+        await api.auth.updateProfile(user.id, patch);
+      } catch (e) {
+        await loadProfile(user);
+        throw e;
+      }
+    },
+    [api, user, loadProfile]
+  );
+
+  const requireAuth = useCallback(
+    (reason?: string) => {
+      if (user) return Promise.resolve(true);
+      setAuthPrompt({ open: true, reason });
+      return new Promise<boolean>((resolve) => waiters.current.push(resolve));
+    },
+    [user]
+  );
+
+  const closeAuthPrompt = useCallback((signedIn: boolean) => {
+    setAuthPrompt({ open: false });
+    waiters.current.splice(0).forEach((w) => w(signedIn));
   }, []);
 
-  const refreshProfile = useCallback(async (userId?: string) => {
-    const uid = userId || session?.user?.id;
-    if (!uid) return;
-
-    try {
-      // Intentionally omit cnic_number from SELECT — regular clients never receive it (item 2)
-      const { data, error } = await supabase
-        .from('profiles')
-        .select(
-          'id, phone, display_name, avatar_url, is_business, is_admin, verification_status, ' +
-          'verification_date, verification_expiry, verification_history, trust_score, radius_km, ' +
-          'saved_locations, watched_areas, pinned_categories, muted_categories, digest_categories, ' +
-          'digest_enabled, digest_time, blocked_users, theme, created_at'
-        )
-        .eq('id', uid)
-        .maybeSingle();
-
-      if (!error && data) {
-        // Merge is_admin from DB, never trust localStorage for this
-        const merged = { ...(data as object), cnic_number: null } as Profile;
-        setProfile(merged);
-        try {
-          localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(merged));
-        } catch {}
-      }
-    } catch {
-      // Fallback to cached
-    }
-  }, [session?.user?.id]);
-
-  async function updateProfile(updates: Partial<Profile>) {
-    // Strip sensitive/privileged fields from client-side updates (item 3)
-    const { is_admin: _ia, cnic_number: _cn, ...safeUpdates } = updates as any;
-
-    setProfile((prev) => {
-      const updated = prev
-        ? { ...prev, ...safeUpdates }
-        : ({ ...getInitialProfile(), ...safeUpdates } as Profile);
-      try {
-        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-
-    if (session?.user) {
-      try {
-        await supabase
-          .from('profiles')
-          .update(safeUpdates)
-          .eq('id', session.user.id);
-      } catch {}
-    }
-  }
-
-  // ── Phone OTP (regular users) ──────────────────────────────────────────────
-  async function signInWithPhone(phone: string): Promise<{ error: string | null }> {
-    // App-level rate limit check (item 4)
-    const { allowed, remaining } = await checkAndIncrementOtpLimit(phone);
-    if (!allowed) {
-      return {
-        error: `Too many OTP requests. You have used all ${OTP_MAX_PER_HOUR} allowed attempts for this hour. Please try again later.`,
-      };
-    }
-
-    try {
-      const { error } = await supabase.auth.signInWithOtp({ phone });
-      if (error) return { error: error.message };
-      if (remaining === 1) {
-        return { error: null }; // last one — warn handled by UI via remaining count
-      }
-      return { error: null };
-    } catch (e: any) {
-      return { error: e?.message ?? 'Sign in error' };
-    }
-  }
-
-  async function verifyOtp(phone: string, token: string): Promise<{ error: string | null }> {
-    try {
-      const { error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
-      return { error: error?.message ?? null };
-    } catch (e: any) {
-      return { error: e?.message ?? 'Verification error' };
-    }
-  }
-
-  // ── Admin: email + password (item 3) ──────────────────────────────────────
-  async function signInAdminWithEmail(email: string, password: string): Promise<{ error: string | null }> {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return { error: error.message };
-
-      // Verify the account actually has admin flag in DB (backend enforcement)
-      if (data.session?.user?.id) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('is_admin')
-          .eq('id', data.session.user.id)
-          .maybeSingle();
-
-        if (!profileData?.is_admin) {
-          // Sign them back out — not an admin
-          await supabase.auth.signOut();
-          return { error: 'Access denied. This account does not have admin privileges.' };
-        }
-      }
-
-      return { error: null };
-    } catch (e: any) {
-      return { error: e?.message ?? 'Admin sign in error' };
-    }
-  }
-
-  async function signOut() {
-    try {
-      await supabase.auth.signOut();
-    } catch {}
-    setSession(null);
-    setProfile(getInitialProfile());
-  }
-
-  return (
-    <AuthContext.Provider
-      value={{
-        session,
-        profile: profile ?? getInitialProfile(),
-        loading,
-        isAdmin,
-        signInWithPhone,
-        verifyOtp,
-        signInAdminWithEmail,
-        signOut,
-        refreshProfile,
-        updateProfile,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      profile,
+      loading,
+      isAdmin: Boolean(user && (profile?.is_admin || profile?.is_owner)),
+      isOwner: Boolean(user && profile?.is_owner),
+      sendOtp: (p) => api.auth.sendOtp(p),
+      verifyOtp: (p, c) => api.auth.verifyOtp(p, c),
+      sendEmailOtp: (e) => api.auth.sendEmailOtp(e),
+      verifyEmailOtp: (e, c) => api.auth.verifyEmailOtp(e, c),
+      adminSignIn: (e, pw) => api.auth.adminSignIn(e, pw),
+      signOut: async () => {
+        await api.auth.signOut();
+        setUser(null);
+        setProfile(null);
+      },
+      refreshProfile: () => loadProfile(user),
+      updateProfile,
+      requireAuth,
+      authPrompt,
+      closeAuthPrompt,
+    }),
+    [api, user, profile, loading, loadProfile, updateProfile, requireAuth, authPrompt, closeAuthPrompt]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

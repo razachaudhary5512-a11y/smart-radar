@@ -1,158 +1,191 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radar, MapPin, User, ArrowRight, ShieldCheck, Sparkles, Check, Phone } from 'lucide-react';
+import { ArrowRight, Bell, Check, Crosshair, HeartHandshake, Loader2, ShieldCheck, Tag } from 'lucide-react';
+import { LogoMark } from '@/components/layout/Logo';
+import { markOnboarded } from '@/components/layout/AppShell';
+import { RadarScope } from '@/components/RadarScope';
+import { useRadar } from '@/lib/location-context';
 import { useAuth } from '@/lib/auth';
-import { useLocation } from '@/lib/location-context';
+import { useLocalStorage } from '@/lib/hooks';
+import { CATEGORIES } from '@/lib/categories';
+import { cn } from '@/lib/format';
 
-type Step = 1 | 2 | 3;
+const HIGHLIGHTS = [
+  { icon: Bell, title: 'Live alerts', body: 'Blood requests, outages and traffic — the moment they happen.' },
+  { icon: Tag, title: 'Deals, jobs & rentals', body: 'Local offers and opportunities within walking distance.' },
+  { icon: HeartHandshake, title: 'Trusted neighbours', body: 'CNIC-verified providers, safety tips and community moderation.' },
+];
 
 export function Onboarding() {
-  const { updateProfile } = useAuth();
-  const { requestLocation } = useLocation();
   const navigate = useNavigate();
+  const radar = useRadar();
+  const { profile, updateProfile } = useAuth();
+  const [step, setStep] = useState(0);
+  const [pinned, setPinned] = useLocalStorage<string[]>('sr_pinned', ['urgent_blood', 'local_event', 'home_services', 'second_hand']);
+  const [radius, setRadius] = useState(radar.radiusKm);
 
-  const [step, setStep] = useState<Step>(1);
-  const [displayName, setDisplayName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [loading, setLoading] = useState(false);
+  const finish = () => {
+    setPinned(pinned); // persist the defaults even if the user never toggled one
+    radar.setRadiusKm(radius);
+    if (profile) updateProfile({ pinned_categories: pinned }).catch(() => {});
+    markOnboarded();
+    navigate('/', { replace: true });
+  };
 
-  async function handleNext() {
-    if (step === 1) {
-      setStep(2);
-      return;
-    }
-
-    if (step === 2) {
-      setLoading(true);
-      await requestLocation();
-      setLoading(false);
-      setStep(3);
-      return;
-    }
-
-    if (step === 3) {
-      if (displayName.trim()) {
-        await updateProfile({
-          display_name: displayName.trim(),
-          phone: phone.trim() || '+92 300 1234567',
-        });
-      }
-      navigate('/');
-    }
-  }
+  const toggle = (slug: string) => setPinned(pinned.includes(slug) ? pinned.filter((s) => s !== slug) : [...pinned, slug]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-700 via-primary-800 to-indigo-950 text-white flex flex-col justify-between p-6 max-w-md mx-auto relative overflow-hidden">
-      {/* Progress Dots */}
-      <div className="flex items-center justify-center gap-2 pt-6">
-        {[1, 2, 3].map((s) => (
-          <div
-            key={s}
-            className={`h-2 rounded-full transition-all duration-300 ${
-              step === s ? 'w-8 bg-white' : 'w-2 bg-white/30'
-            }`}
-          />
-        ))}
-      </div>
-
-      {/* Screen 1: Welcome & Value */}
-      {step === 1 && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 animate-fade-in">
-          <div className="relative mb-8">
-            <div className="w-28 h-28 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-2xl shadow-primary-900/50">
-              <Radar size={56} className="text-white animate-spin-slow" />
-            </div>
-            <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold shadow-md">
-              Live
-            </div>
+    <div className="flex min-h-dvh flex-col bg-bg lg:items-center lg:justify-center lg:p-8">
+      <div className="flex w-full flex-1 flex-col lg:max-w-[980px] lg:flex-none lg:flex-row lg:overflow-hidden lg:rounded-[32px] lg:border lg:border-line lg:bg-surface lg:shadow-lift">
+        {/* Visual panel */}
+        <div className="relative flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-primary-600 via-primary-700 to-[#131a4a] px-6 pb-10 pt-[max(env(safe-area-inset-top),2.5rem)] text-white lg:w-[46%] lg:py-14">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:16px_16px]" />
+          <div className="relative flex items-center gap-2.5 self-start lg:absolute lg:left-8 lg:top-8">
+            <LogoMark size={34} />
+            <span className="text-[17px] font-extrabold tracking-tight">Smart Radar</span>
           </div>
-
-          <h1 className="text-3xl font-black mb-3 tracking-tight">Smart Radar</h1>
-          <p className="text-base text-primary-100 max-w-xs font-medium leading-relaxed">
-            Everything happening within 1–10 km of you — alerts, deals, jobs, services & carpools. Follow distant areas up to 20 km via Watch Areas.
-          </p>
+          <div className="relative mt-8 lg:mt-0">
+            <RadarScope center={radar.coords} radiusKm={3} posts={[]} size={210} />
+            {[
+              [22, 30, '#dc2626'],
+              [70, 24, '#14d1b0'],
+              [64, 70, '#f59e0b'],
+              [30, 66, '#8b5cf6'],
+            ].map(([x, y, c]) => (
+              <span key={`${x}${y}`} className="absolute h-3 w-3 rounded-full ring-2 ring-white/80" style={{ left: `${x}%`, top: `${y}%`, background: c as string }} />
+            ))}
+          </div>
+          <p className="relative mt-8 text-center text-2xl font-extrabold tracking-tight lg:text-[28px]">Your Neighbourhood, One App</p>
+          <p className="relative mt-2 max-w-xs text-center text-sm text-white/75">Everything happening within 1–5 km of you — in one place.</p>
         </div>
-      )}
 
-      {/* Screen 2: Hyperlocal Location */}
-      {step === 2 && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 animate-fade-in">
-          <div className="w-28 h-28 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-2xl mb-8 text-primary-200">
-            <MapPin size={56} className="text-white animate-bounce" />
+        {/* Steps */}
+        <div className="flex flex-1 flex-col px-6 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-7 lg:px-10 lg:py-10">
+          <div className="mb-6 flex gap-1.5" aria-label={`Step ${step + 1} of 3`}>
+            {[0, 1, 2].map((i) => (
+              <span key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', i <= step ? 'bg-primary-600' : 'bg-line')} />
+            ))}
           </div>
 
-          <h2 className="text-2xl font-black mb-3">Hyperlocal Radar</h2>
-          <p className="text-base text-primary-100 max-w-xs font-medium leading-relaxed">
-            Scan verified posts and live alerts in your immediate neighborhood block and sector.
-          </p>
-        </div>
-      )}
-
-      {/* Screen 3: Quick Profile */}
-      {step === 3 && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 animate-fade-in w-full">
-          <div className="w-24 h-24 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-2xl mb-6">
-            <User size={48} className="text-white" />
-          </div>
-
-          <h2 className="text-2xl font-black mb-2">Neighborhood Identity</h2>
-          <p className="text-xs text-primary-100 mb-6">Choose how neighbors see you on the radar</p>
-
-          <div className="w-full space-y-3 mb-4 text-left">
-            <div>
-              <label className="text-xs font-bold text-primary-200 block mb-1">Your Name</label>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="e.g. Hamza Tariq"
-                className="w-full px-4 py-3 rounded-2xl bg-white/15 border border-white/20 text-white placeholder-primary-300 focus:outline-none focus:ring-2 focus:ring-white text-sm"
-              />
+          {step === 0 && (
+            <div className="flex-1 animate-fade-in">
+              <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-ink">Welcome to Smart Radar</h1>
+              <p className="mt-2 text-[15px] text-ink-2">A hyperlocal community for alerts, deals, services, transport and neighbours you can trust.</p>
+              <ul className="mt-7 space-y-4">
+                {HIGHLIGHTS.map((h) => (
+                  <li key={h.title} className="flex gap-3.5">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-600/10 text-primary-600">
+                      <h.icon className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="font-bold text-ink">{h.title}</p>
+                      <p className="text-sm text-ink-2">{h.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div>
-              <label className="text-xs font-bold text-primary-200 block mb-1">Phone Number (Optional)</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+92 300 1234567"
-                className="w-full px-4 py-3 rounded-2xl bg-white/15 border border-white/20 text-white placeholder-primary-300 focus:outline-none focus:ring-2 focus:ring-white text-sm"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom CTA Button */}
-      <div className="pb-4 space-y-2">
-        <button
-          onClick={handleNext}
-          disabled={loading}
-          className="w-full py-4 rounded-2xl bg-white text-primary-800 font-extrabold text-sm flex items-center justify-center gap-2 shadow-2xl active:scale-95 transition-all cursor-pointer"
-        >
-          {loading ? (
-            'Configuring Radar...'
-          ) : step === 3 ? (
-            <>
-              <span>Enter Neighborhood Feed</span>
-              <Check size={18} />
-            </>
-          ) : (
-            <>
-              <span>Continue</span>
-              <ArrowRight size={18} />
-            </>
           )}
-        </button>
 
-        {step < 3 && (
-          <button
-            onClick={() => navigate('/')}
-            className="w-full py-2 text-xs font-semibold text-primary-200 hover:text-white transition-colors cursor-pointer"
-          >
-            Skip to feed
-          </button>
-        )}
+          {step === 1 && (
+            <div className="flex-1 animate-fade-in">
+              <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-ink">Where’s your neighbourhood?</h1>
+              <p className="mt-2 text-[15px] text-ink-2">We use your location only to show posts nearby. Your exact position is never shown to others.</p>
+              <button
+                onClick={radar.requestLocation}
+                disabled={radar.gpsStatus === 'locating' || radar.gpsStatus === 'granted'}
+                className={cn(
+                  'mt-7 flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition',
+                  radar.gpsStatus === 'granted' ? 'border-success-500 bg-success-500/5' : 'border-line hover:border-primary-500'
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-12 w-12 items-center justify-center rounded-2xl text-white',
+                    radar.gpsStatus === 'granted' ? 'bg-success-600' : 'bg-primary-600'
+                  )}
+                >
+                  {radar.gpsStatus === 'locating' ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : radar.gpsStatus === 'granted' ? (
+                    <Check className="h-6 w-6" />
+                  ) : (
+                    <Crosshair className="h-6 w-6" />
+                  )}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-bold text-ink">
+                    {radar.gpsStatus === 'granted' ? 'Location enabled' : radar.gpsStatus === 'locating' ? 'Finding you…' : 'Use my current location'}
+                  </p>
+                  <p className="truncate text-sm text-ink-2">
+                    {radar.gpsStatus === 'granted'
+                      ? radar.areaLabel
+                      : radar.gpsStatus === 'denied'
+                        ? radar.gpsError
+                        : 'Recommended for the best experience'}
+                  </p>
+                </div>
+              </button>
+              {radar.gpsStatus === 'denied' && (
+                <p className="mt-3 text-sm text-ink-2">No problem — you can pick any neighbourhood from the feed later. We’ll start with Karachi.</p>
+              )}
+              <div className="mt-7">
+                <p className="label">Scan radius</p>
+                <div className="grid grid-cols-5 gap-2">
+                  {[1, 2, 3, 4, 5].map((k) => (
+                    <button key={k} onClick={() => setRadius(k)} className={cn('h-12 rounded-xl border text-sm font-bold transition', radius === k ? 'border-primary-600 bg-primary-600 text-white' : 'border-line text-ink-2 hover:border-ink-3')}>
+                      {k} km
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="flex-1 animate-fade-in">
+              <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-ink">What do you care about?</h1>
+              <p className="mt-2 text-[15px] text-ink-2">We’ll pin these to the top of your feed. You can change them any time.</p>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {CATEGORIES.map((c) => {
+                  const on = pinned.includes(c.slug);
+                  return (
+                    <button
+                      key={c.slug}
+                      onClick={() => toggle(c.slug)}
+                      aria-pressed={on}
+                      className={cn('chip h-10', on ? 'border-transparent text-white' : 'border-line bg-surface text-ink-2')}
+                      style={on ? { background: c.color } : undefined}
+                    >
+                      <c.icon className="h-4 w-4" style={on ? undefined : { color: c.color }} />
+                      {c.short}
+                      {on && <Check className="h-3.5 w-3.5" />}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-6 flex items-start gap-2 rounded-2xl bg-surface-2 p-3.5 text-[13px] text-ink-2">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success-600" />
+                Browsing is open to everyone. You’ll only need your phone number or email to post, vote or comment.
+              </p>
+            </div>
+          )}
+
+          <div className="mt-8 flex items-center gap-3">
+            {step > 0 ? (
+              <button className="btn-ghost" onClick={() => setStep(step - 1)}>
+                Back
+              </button>
+            ) : (
+              <button className="btn-ghost" onClick={finish}>
+                Skip
+              </button>
+            )}
+            <button className="btn-primary ml-auto min-w-[150px]" onClick={() => (step < 2 ? setStep(step + 1) : finish())}>
+              {step < 2 ? 'Continue' : 'Start exploring'} <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

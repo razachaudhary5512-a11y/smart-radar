@@ -1,1237 +1,776 @@
-import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  User,
-  MapPin,
   Bell,
-  Moon,
-  Sun,
+  BadgeCheck,
   Bookmark,
-  Ban,
-  ShieldCheck,
-  SlidersHorizontal,
-  ChevronRight,
-  LogOut,
-  Phone,
-  Plus,
-  Trash2,
-  Star,
-  Siren,
-  Settings,
-  Store,
-  Newspaper,
-  Clock,
-  Sparkles,
-  CheckCircle2,
-  Calendar,
-  Tag,
   Briefcase,
-  Home,
-  MessageSquarePlus,
-  X,
-  Eye,
+  Camera,
   Download,
-  AlertOctagon,
-  RefreshCw,
-  type LucideIcon,
+  Eye,
+  LogOut,
+  MapPin,
+  Moon,
+  Palette,
+  Pin,
+  Plus,
+  Radar,
+  Search,
+  ShieldCheck,
+  Store,
+  Sun,
+  SunMoon,
+  Trash2,
+  UserRound,
+  VolumeX,
 } from 'lucide-react';
+import { PageBody, PageHeader, RequireAuth } from '@/components/layout/Page';
+import { Avatar, Badge, ConfirmDialog, Segmented, Sheet, Switch, TrustRing, VerifiedBadge, useToast, verificationState } from '@/components/ui';
+import { useApi, useBackend } from '@/data';
+import { resetDemoData } from '@/data/demo';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/lib/theme';
-import { useLocation } from '@/lib/location-context';
-import { supabase } from '@/lib/supabase';
-import { CATEGORIES, CATEGORY_MAP, type CategoryConfig } from '@/lib/categories';
-import type { SavedLocation, TrustedContact, PostWithRelations, WatchedArea, VerificationAuditItem } from '@/lib/types';
-import {
-  getStoredLocalPosts,
-  getStoredWatchedAreas,
-  saveWatchedArea,
-  deleteWatchedArea,
-  exportAccountDataPackage,
-  wipeAllAccountData,
-  POPULAR_NEIGHBORHOODS,
-} from '@/lib/dummy-data';
-import { Modal, ConfirmDialog, Toast, Badge, EmptyState } from '@/components/ui';
+import { useRadar } from '@/lib/location-context';
+import { useDebounced, useQuery } from '@/lib/hooks';
+import { CATEGORIES, getCategory } from '@/lib/categories';
+import { cn, formatCnic, formatDate, maskPhone, toE164PK, uid } from '@/lib/format';
+import { searchPlaces, type PlaceResult } from '@/services/maps';
+import { isFirebaseConfigured, requestNotificationPermission } from '@/services/firebase';
+import type { Profile as ProfileT, WatchedArea } from '@/lib/types';
 
-type SettingsSection = 'main' | 'radius' | 'notifications' | 'saved' | 'blocked' | 'trusted' | 'verification' | 'watched_areas' | 'privacy';
+const SECTIONS = [
+  { id: 'account', label: 'Account', icon: UserRound },
+  { id: 'verification', label: 'Verification', icon: ShieldCheck },
+  { id: 'radar', label: 'Radar & places', icon: Radar },
+  { id: 'feed', label: 'Feed preferences', icon: Pin },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'privacy', label: 'Privacy & data', icon: Download },
+];
 
 export function Profile() {
-  const navigate = useNavigate();
-  const { profile, session, signOut, updateProfile } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  const { radiusKm, setRadiusKm } = useLocation();
-  const [section, setSection] = useState<SettingsSection>('main');
-  const [savedPosts, setSavedPosts] = useState<{ id: string; title: string; category: string }[]>([]);
-  const [blockedUsers, setBlockedUsers] = useState<{ id: string; name: string }[]>([]);
-  const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>([]);
-  const [showSignOut, setShowSignOut] = useState(false);
-  const [showAddLocation, setShowAddLocation] = useState(false);
-  const [showAddTrusted, setShowAddTrusted] = useState(false);
-  const [showDigestModal, setShowDigestModal] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; show: boolean }>({ msg: '', show: false });
-  const [cnicInput, setCnicInput] = useState('');
-  const [editName, setEditName] = useState('');
-  const [isEditingName, setIsEditingName] = useState(false);
-  // Watch Areas
-  const [watchedAreas, setWatchedAreas] = useState<WatchedArea[]>([]);
-  const [showAddWatchArea, setShowAddWatchArea] = useState(false);
-  const [customWatchName, setCustomWatchName] = useState('');
-  const [customWatchCity, setCustomWatchCity] = useState('');
-  const [customWatchRadius, setCustomWatchRadius] = useState(5);
-  // Privacy
-  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  return (
+    <>
+      <PageHeader title="Profile & settings" subtitle="Your identity, radar preferences and privacy controls." />
+      <PageBody>
+        <RequireAuth icon={UserRound} title="Your profile" body="Sign in to set up your profile, verify your CNIC and personalise your radar.">
+          <ProfileContent />
+        </RequireAuth>
+      </PageBody>
+    </>
+  );
+}
 
-  const showToast = (msg: string) => {
-    setToast({ msg, show: true });
-    setTimeout(() => setToast({ msg: '', show: false }), 2000);
-  };
-
-  useEffect(() => {
-    if (section === 'saved' && session?.user) {
-      loadSavedPosts();
-    }
-    if (section === 'blocked' && profile) {
-      loadBlockedUsers();
-    }
-    if (section === 'trusted' && session?.user) {
-      loadTrustedContacts();
-    }
-    if (section === 'watched_areas') {
-      setWatchedAreas(getStoredWatchedAreas());
-    }
-    if (profile) {
-      setEditName(profile.display_name);
-    }
-  }, [section, session?.user, profile]);
-
-  async function loadSavedPosts() {
-    if (!session?.user) return;
-    const { data } = await supabase
-      .from('bookmarks')
-      .select('post_id, posts(title, category)')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: false });
-    setSavedPosts(
-      (data ?? []).map((b: unknown) => {
-        const row = b as { post_id: string; posts: { title: string; category: string } };
-        return { id: row.post_id, title: row.posts?.title ?? '', category: row.posts?.category ?? '' };
-      })
-    );
-  }
-
-  async function loadBlockedUsers() {
-    if (!profile?.blocked_users?.length) {
-      setBlockedUsers([]);
-      return;
-    }
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, display_name')
-      .in('id', profile.blocked_users);
-    setBlockedUsers((data ?? []).map((p: { id: string; display_name: string }) => ({ id: p.id, name: p.display_name })));
-  }
-
-  async function loadTrustedContacts() {
-    if (!session?.user) return;
-    const { data } = await supabase
-      .from('trusted_contacts')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: true });
-    setTrustedContacts((data ?? []) as TrustedContact[]);
-  }
-
-  async function handleUnblock(userId: string) {
-    if (!profile) return;
-    const updated = profile.blocked_users.filter((id) => id !== userId);
-    await updateProfile({ blocked_users: updated });
-    loadBlockedUsers();
-    showToast('User unblocked');
-  }
-
-  async function handleAddTrusted(name: string, phone: string) {
-    if (!session?.user || !name.trim() || !phone.trim()) return;
-    await supabase.from('trusted_contacts').insert({
-      user_id: session.user.id,
-      name: name.trim(),
-      phone: phone.trim(),
-    });
-    setShowAddTrusted(false);
-    loadTrustedContacts();
-    showToast('Trusted contact added');
-  }
-
-  async function handleDeleteTrusted(id: string) {
-    await supabase.from('trusted_contacts').delete().eq('id', id);
-    setTrustedContacts((prev) => prev.filter((c) => c.id !== id));
-  }
-
-  async function handleAddLocation(label: string, lat: number, lng: number) {
-    if (!profile) return;
-    const locations = [...(profile.saved_locations ?? []), { label, lat, lng }];
-    await updateProfile({ saved_locations: locations });
-    setShowAddLocation(false);
-    showToast('Location saved');
-  }
-
-  async function handleDeleteLocation(index: number) {
-    if (!profile) return;
-    const locations = profile.saved_locations.filter((_, i) => i !== index);
-    await updateProfile({ saved_locations: locations });
-  }
-
-  async function handleSubmitVerification() {
-    if (!cnicInput.trim() || !profile) return;
-    const now = new Date();
-    const sixMonthsLater = new Date(now.getTime() + 180 * 86400000);
-    const newAuditItem: VerificationAuditItem = {
-      id: `verify-${Date.now()}`,
-      date: now.toISOString(),
-      cnic_masked: `${cnicInput.substring(0, 5)}-XXXXXXX-${cnicInput.slice(-1)}`,
-      status: 'valid',
-      valid_until: sixMonthsLater.toISOString(),
-      notes: 'CNIC/NTN verified by user submission',
-    };
-    const history = [...(profile.verification_history || []), newAuditItem];
-    await updateProfile({
-      is_business: true,
-      cnic_number: cnicInput.trim(),
-      verification_status: 'pending',
-      verification_date: now.toISOString(),
-      verification_expiry: sixMonthsLater.toISOString(),
-      verification_history: history,
-    });
-    setCnicInput('');
-    showToast('Verification submitted — pending admin review');
-  }
-
-  async function handleSaveName() {
-    if (!editName.trim() || !profile) return;
-    await updateProfile({ display_name: editName.trim() });
-    setIsEditingName(false);
-    showToast('Profile name updated');
-  }
-
-  function handleExportData() {
-    if (!profile) return;
-    try {
-      const posts = getStoredLocalPosts();
-      exportAccountDataPackage(profile, posts);
-      showToast('Data package downloaded successfully!');
-    } catch {
-      showToast('Export failed — try again.');
-    }
-  }
-
-  async function handleDeleteAccount() {
-    if (!profile) return;
-    if (deleteConfirmText.toLowerCase() !== profile.display_name.toLowerCase()) {
-      showToast('Name does not match. Try again.');
-      return;
-    }
-    try {
-      if (session?.user) {
-        await supabase.from('posts').delete().eq('user_id', session.user.id);
-        await supabase.from('comments').delete().eq('user_id', session.user.id);
-        await supabase.from('bookmarks').delete().eq('user_id', session.user.id);
-        await supabase.from('votes').delete().eq('user_id', session.user.id);
-        await supabase.auth.signOut();
-      }
-      wipeAllAccountData(profile.id);
-      setShowDeleteAccount(false);
-      navigate('/');
-    } catch {
-      showToast('Deletion failed — try again.');
-    }
-  }
-
-  function handleAddWatchArea(neighborhood: typeof POPULAR_NEIGHBORHOODS[0]) {
-    const newArea: WatchedArea = {
-      id: `watched-${Date.now()}`,
-      name: neighborhood.name,
-      city: neighborhood.city,
-      lat: neighborhood.lat,
-      lng: neighborhood.lng,
-      radius_km: neighborhood.radius_km,
-      notify: true,
-      notes: neighborhood.notes,
-      created_at: new Date().toISOString(),
-    };
-    saveWatchedArea(newArea);
-    setWatchedAreas(getStoredWatchedAreas());
-    showToast(`Now watching ${neighborhood.name}`);
-  }
-
-  function handleDeleteWatchArea(id: string) {
-    deleteWatchedArea(id);
-    setWatchedAreas(getStoredWatchedAreas());
-    showToast('Area unfollowed');
-  }
-
-  function handleAddCustomWatchArea() {
-    if (!customWatchName.trim()) {
-      showToast('Please enter an area name');
-      return;
-    }
-    const newArea: WatchedArea = {
-      id: `watched-custom-${Date.now()}`,
-      name: customWatchName.trim(),
-      city: customWatchCity.trim() || 'Custom Location',
-      lat: 24.8607,
-      lng: 67.0011,
-      radius_km: customWatchRadius,
-      notify: true,
-      notes: `Custom watched area — radius ${customWatchRadius} km`,
-      created_at: new Date().toISOString(),
-    };
-    saveWatchedArea(newArea);
-    setWatchedAreas(getStoredWatchedAreas());
-    setCustomWatchName('');
-    setCustomWatchCity('');
-    setCustomWatchRadius(5);
-    setShowAddWatchArea(false);
-    showToast(`Now watching ${newArea.name}`);
-  }
-
-  // Daily digest helpers
-  const digestCategories = profile?.digest_categories ?? ['local_deals', 'local_event', 'jobs_internships', 'property_rent'];
-  const mutedCategories = profile?.muted_categories ?? [];
-  const isDigestEnabled = profile?.digest_enabled ?? true;
-  const digestTime = profile?.digest_time ?? '20:00';
-
-  function setCategoryNotificationPreference(slug: string, preference: 'realtime' | 'digest' | 'muted') {
-    if (!profile) return;
-    let newMuted = [...(profile.muted_categories || [])];
-    let newDigest = [...(profile.digest_categories || [])];
-
-    if (preference === 'realtime') {
-      newMuted = newMuted.filter((s) => s !== slug);
-      newDigest = newDigest.filter((s) => s !== slug);
-    } else if (preference === 'digest') {
-      newMuted = newMuted.filter((s) => s !== slug);
-      if (!newDigest.includes(slug)) newDigest.push(slug);
-    } else if (preference === 'muted') {
-      if (!newMuted.includes(slug)) newMuted.push(slug);
-      newDigest = newDigest.filter((s) => s !== slug);
-    }
-
-    updateProfile({ muted_categories: newMuted, digest_categories: newDigest });
-    showToast(`Preferences updated for ${CATEGORY_MAP[slug]?.label ?? slug}`);
-  }
-
-  // Sample digest items from current local posts
-  const digestPosts = useMemo(() => {
-    const posts = getStoredLocalPosts();
-    return posts.filter((p) => digestCategories.includes(p.category) && !mutedCategories.includes(p.category));
-  }, [digestCategories, mutedCategories]);
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <button onClick={() => navigate('/onboarding')} className="btn-primary">
-          Sign in to view profile
+function ProfileContent() {
+  const { profile, signOut } = useAuth();
+  if (!profile) return null;
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <aside className="hidden lg:block">
+        <nav className="sticky top-8 space-y-0.5" aria-label="Settings sections">
+          {SECTIONS.map((s) => (
+            <a key={s.id} href={`#${s.id}`} className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink">
+              <s.icon className="h-4 w-4" /> {s.label}
+            </a>
+          ))}
+          <button onClick={signOut} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-danger-600 hover:bg-surface-2">
+            <LogOut className="h-4 w-4" /> Sign out
+          </button>
+        </nav>
+      </aside>
+      <div className="min-w-0 space-y-5">
+        <AccountCard profile={profile} />
+        <VerificationSection profile={profile} />
+        <RadarSection profile={profile} />
+        <FeedSection profile={profile} />
+        <NotificationSection profile={profile} />
+        <AppearanceSection />
+        <PrivacySection profile={profile} />
+        <button onClick={signOut} className="btn-outline w-full text-danger-600 lg:hidden">
+          <LogOut className="h-4 w-4" /> Sign out
         </button>
       </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-28 max-w-lg mx-auto">
-      {/* Header */}
-      <div className="sticky top-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-extrabold tracking-tight">
-            {section === 'main' ? 'Citizen Profile' : section === 'notifications' ? 'Alerts & Daily Digest' : 'Settings'}
-          </h1>
-          {section !== 'main' && (
-            <button onClick={() => setSection('main')} className="btn-ghost text-xs font-bold cursor-pointer">
-              Back
-            </button>
-          )}
-        </div>
-      </div>
-
-      {section === 'main' && (
-        <div className="px-4 py-4 space-y-4 animate-fade-in">
-          {/* Profile Card */}
-          <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-200/80 dark:border-gray-800 shadow-xs">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <img
-                  src={
-                    profile.avatar_url ||
-                    `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.display_name || 'Radar Citizen')}&background=2563eb&color=fff&size=120`
-                  }
-                  alt=""
-                  className="w-16 h-16 rounded-2xl object-cover ring-2 ring-primary-500/20"
-                />
-                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white dark:border-gray-900" />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                {isEditingName ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="input text-xs py-1"
-                      placeholder="Your name"
-                    />
-                    <button
-                      onClick={handleSaveName}
-                      className="btn-primary text-xs px-2.5 py-1"
-                    >
-                      Save
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-extrabold truncate text-gray-900 dark:text-white">
-                      {profile.display_name || 'Radar Citizen'}
-                    </h2>
-                    <button
-                      onClick={() => setIsEditingName(true)}
-                      className="text-[11px] text-primary-600 font-bold hover:underline cursor-pointer"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                )}
-                <p className="text-xs text-gray-400 mt-0.5">{profile.phone || 'Neighborhood Resident'}</p>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200">
-                    <ShieldCheck size={12} /> {profile.trust_score ?? 100}% Trust Score
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-primary-50 text-primary-700 dark:bg-primary-950/50 dark:text-primary-300">
-                    Active Radar
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Settings Rows */}
-          <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200/80 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 shadow-xs overflow-hidden">
-            <SettingRow
-              icon={Bell}
-              label="Notifications & Daily Digest"
-              sublabel="Digest summary for deals, events & marketplace"
-              badge="Digest Option"
-              onClick={() => setSection('notifications')}
-            />
-            <SettingRow
-              icon={SlidersHorizontal}
-              label="Radar Scanning Radius"
-              value={`${radiusKm} km`}
-              onClick={() => setSection('radius')}
-            />
-            <SettingRow
-              icon={Bookmark}
-              label="Saved Posts & Bookmarks"
-              onClick={() => setSection('saved')}
-            />
-            <SettingRow
-              icon={Ban}
-              label="Blocked Users"
-              value={profile.blocked_users.length > 0 ? `${profile.blocked_users.length}` : undefined}
-              onClick={() => setSection('blocked')}
-            />
-            <SettingRow
-              icon={Siren}
-              label="Trusted Emergency Contacts"
-              value={trustedContacts.length > 0 ? `${trustedContacts.length}` : undefined}
-              onClick={() => setSection('trusted')}
-            />
-            <SettingRow
-              icon={ShieldCheck}
-              label="Business & Trader Verification"
-              value={profile.verification_status ?? 'Ready to apply'}
-              onClick={() => setSection('verification')}
-            />
-            <SettingRow
-              icon={Eye}
-              label="Watched Areas (Beyond Radius)"
-              sublabel={`${(profile.watched_areas?.length ?? watchedAreas.length)} areas followed — DHA, Gulberg, F-7 etc.`}
-              badge="New"
-              onClick={() => { setWatchedAreas(getStoredWatchedAreas()); setSection('watched_areas'); }}
-            />
-            <SettingRow
-              icon={Download}
-              label="Data Export & Privacy (GDPR)"
-              sublabel="Export your data or delete your account"
-              badge="Privacy"
-              onClick={() => setSection('privacy')}
-            />
-            <SettingRow
-              icon={theme === 'dark' ? Sun : Moon}
-              label="App Display Theme"
-              value={theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
-              onClick={toggleTheme}
-            />
-          </div>
-
-          {/* Saved Locations */}
-          <div className="bg-white dark:bg-gray-900 rounded-3xl p-4 border border-gray-200/80 dark:border-gray-800 shadow-xs">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <MapPin size={18} className="text-primary-600" />
-                <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">Saved Radar Locations</h3>
-              </div>
-              <button
-                onClick={() => setShowAddLocation(true)}
-                className="text-xs font-bold text-primary-600 hover:text-primary-700 flex items-center gap-1 cursor-pointer"
-              >
-                <Plus size={14} /> Add
-              </button>
-            </div>
-            {profile.saved_locations.length > 0 ? (
-              <div className="space-y-2">
-                {profile.saved_locations.map((loc, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 rounded-2xl bg-gray-50 dark:bg-gray-800/60">
-                    <div>
-                      <p className="text-xs font-bold text-gray-900 dark:text-gray-100">{loc.label}</p>
-                      <p className="text-[10px] text-gray-400">{loc.lat.toFixed(3)}, {loc.lng.toFixed(3)}</p>
-                    </div>
-                    <button onClick={() => handleDeleteLocation(i)} className="p-1.5 text-gray-400 hover:text-red-600 cursor-pointer">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400">Save common locations like home or workplace for instant radar switching.</p>
-            )}
-          </div>
-
-          {/* Sign Out Button */}
-          <button
-            onClick={() => setShowSignOut(true)}
-            className="w-full py-3 rounded-2xl text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
-          >
-            <LogOut size={16} /> Sign Out
-          </button>
-        </div>
-      )}
-
-      {/* RADIUS SECTION */}
-      {section === 'radius' && (
-        <div className="px-4 py-4 animate-fade-in space-y-4">
-          <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 text-center border border-gray-200/80 dark:border-gray-800 shadow-xs">
-            <div className="text-5xl font-black text-primary-600 mb-2">{radiusKm} km</div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
-              Posts, deals, and alerts within this radius appear in your radar feed and interactive map.
-            </p>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              step={1}
-              value={radiusKm}
-              onChange={(e) => setRadiusKm(parseInt(e.target.value))}
-              className="w-full accent-primary-600"
-            />
-            <div className="flex justify-between text-xs text-gray-400 mt-2 font-bold">
-              <span>1 km (Walking)</span>
-              <span>5 km (Sector)</span>
-              <span>10 km (Max Radar)</span>
-            </div>
-          </div>
-          <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 text-xs text-indigo-700 dark:text-indigo-300 flex items-start gap-2.5">
-            <Eye size={16} className="shrink-0 mt-0.5" />
-            <span>
-              <strong>Watch Areas</strong> can reach up to <strong>20 km</strong> — follow a distant neighborhood via Profile → Watched Areas.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* NOTIFICATIONS & DAILY DIGEST SECTION */}
-      {section === 'notifications' && (
-        <div className="px-4 py-4 space-y-4 animate-fade-in">
-          {/* DAILY DIGEST HERO CARD */}
-          <div className="p-5 rounded-3xl bg-gradient-to-r from-indigo-900 to-primary-900 text-white shadow-lg space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-white/20 flex items-center justify-center">
-                  <Newspaper size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold">Daily Neighborhood Digest</h3>
-                  <p className="text-[11px] text-indigo-200">1 bundled summary instead of constant alerts</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  updateProfile({ digest_enabled: !isDigestEnabled });
-                  showToast(isDigestEnabled ? 'Daily digest disabled' : 'Daily digest enabled');
-                }}
-                className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                  isDigestEnabled ? 'bg-emerald-500' : 'bg-white/30'
-                }`}
-              >
-                <div
-                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                    isDigestEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {isDigestEnabled && (
-              <div className="pt-3 border-t border-white/10 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-indigo-200 flex items-center gap-1">
-                    <Clock size={13} /> Preferred Delivery Time:
-                  </span>
-                  <select
-                    value={digestTime}
-                    onChange={(e) => updateProfile({ digest_time: e.target.value })}
-                    className="bg-white/15 text-white font-bold text-xs rounded-xl px-2 py-1 border border-white/20 outline-hidden"
-                  >
-                    <option value="09:00" className="text-gray-900">Morning (9:00 AM)</option>
-                    <option value="13:00" className="text-gray-900">Midday (1:00 PM)</option>
-                    <option value="20:00" className="text-gray-900">Evening (8:00 PM)</option>
-                  </select>
-                </div>
-
-                <button
-                  onClick={() => setShowDigestModal(true)}
-                  className="w-full py-2.5 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center justify-center gap-1.5 backdrop-blur-xs transition-all cursor-pointer"
-                >
-                  <Sparkles size={14} />
-                  <span>Preview Today's Daily Summary</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <h4 className="text-xs font-bold text-gray-500 uppercase px-1">Category Alert Modes</h4>
-            <p className="text-[11px] text-gray-400 px-1">
-              Choose whether to receive immediate alerts, roll updates into your daily digest, or mute completely.
-            </p>
-          </div>
-
-          {/* Category List with 3-way segment controls */}
-          <div className="space-y-2">
-            {CATEGORIES.map((cat) => {
-              const isUrgent = cat.slug === 'urgent_blood' || cat.group === 'emergency';
-              const isMuted = mutedCategories.includes(cat.slug);
-              const isDigest = digestCategories.includes(cat.slug) && !isMuted;
-              const isRealtime = !isMuted && !isDigest;
-
-              return (
-                <div key={cat.slug} className="bg-white dark:bg-gray-900 p-3.5 rounded-2xl border border-gray-200/80 dark:border-gray-800 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${cat.bgColor}`}>
-                        <cat.icon size={16} className={cat.textColor} />
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-gray-900 dark:text-white block">{cat.label}</span>
-                        <span className="text-[10px] text-gray-400">{cat.group}</span>
-                      </div>
-                    </div>
-                    {isUrgent && (
-                      <span className="text-[10px] font-extrabold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                        🚨 Priority Realtime
-                      </span>
-                    )}
-                  </div>
-
-                  {!isUrgent && (
-                    <div className="grid grid-cols-3 gap-1 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-xl text-[11px] font-bold">
-                      <button
-                        type="button"
-                        onClick={() => setCategoryNotificationPreference(cat.slug, 'realtime')}
-                        className={`py-1.5 rounded-lg transition-all cursor-pointer ${
-                          isRealtime
-                            ? 'bg-white dark:bg-gray-900 text-primary-600 shadow-xs'
-                            : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                      >
-                        🔔 Instant
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCategoryNotificationPreference(cat.slug, 'digest')}
-                        className={`py-1.5 rounded-lg transition-all cursor-pointer ${
-                          isDigest
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                      >
-                        📰 Daily Digest
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCategoryNotificationPreference(cat.slug, 'muted')}
-                        className={`py-1.5 rounded-lg transition-all cursor-pointer ${
-                          isMuted
-                            ? 'bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
-                            : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                      >
-                        🔕 Mute
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* SAVED POSTS */}
-      {section === 'saved' && (
-        <div className="px-4 py-4 space-y-2 animate-fade-in">
-          {savedPosts.length === 0 ? (
-            <EmptyState icon={<Bookmark size={28} />} title="No saved posts" message="Bookmark posts to find them here later." />
-          ) : (
-            savedPosts.map((p) => {
-              const cat = CATEGORY_MAP[p.category];
-              return (
-                <div
-                  key={p.id}
-                  onClick={() => navigate(`/post/${p.id}`)}
-                  className="card p-3 cursor-pointer hover:shadow-md transition-shadow flex items-center gap-3"
-                >
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${cat?.bgColor ?? 'bg-gray-100'}`}>
-                    {cat && <cat.icon size={16} className={cat.textColor} />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium line-clamp-1">{p.title}</p>
-                    <p className="text-xs text-gray-400">{cat?.label}</p>
-                  </div>
-                  <ChevronRight size={16} className="text-gray-400" />
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* BLOCKED USERS */}
-      {section === 'blocked' && (
-        <div className="px-4 py-4 space-y-2 animate-fade-in">
-          {blockedUsers.length === 0 ? (
-            <EmptyState icon={<Ban size={28} />} title="No blocked users" message="Blocked users will appear here." />
-          ) : (
-            blockedUsers.map((u) => (
-              <div key={u.id} className="card p-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm font-semibold">
-                    {u.name.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="text-sm font-medium">{u.name}</span>
-                </div>
-                <button onClick={() => handleUnblock(u.id)} className="btn-ghost text-xs text-primary-600">
-                  Unblock
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* TRUSTED CONTACTS */}
-      {section === 'trusted' && (
-        <div className="px-4 py-4 space-y-2 animate-fade-in">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            These emergency contacts receive instant SMS/notification broadcasts if you trigger emergency assistance.
-          </p>
-          <button onClick={() => setShowAddTrusted(true)} className="btn-secondary w-full text-xs font-bold py-2.5">
-            <Plus size={16} /> Add Trusted Contact
-          </button>
-          {trustedContacts.length === 0 ? (
-            <EmptyState icon={<Siren size={28} />} title="No trusted contacts" message="Add contacts who will be alerted in an emergency." />
-          ) : (
-            trustedContacts.map((c) => (
-              <div key={c.id} className="card p-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-danger-100 dark:bg-danger-900/30 flex items-center justify-center">
-                    <Phone size={14} className="text-danger-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{c.name}</p>
-                    <p className="text-xs text-gray-400">{c.phone}</p>
-                  </div>
-                </div>
-                <button onClick={() => handleDeleteTrusted(c.id)} className="btn-ghost p-1.5">
-                  <Trash2 size={14} className="text-gray-400" />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* VERIFICATION */}
-      {section === 'verification' && (
-        <div className="px-4 py-4 space-y-4 animate-fade-in">
-          <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-200/80 dark:border-gray-800 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600">
-                <ShieldCheck size={24} />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm">Business & Service Verification</h3>
-                <p className="text-xs text-gray-400">CNIC-verified providers renew every 6 months to keep badge active</p>
-              </div>
-            </div>
-
-            {profile.verification_status === 'approved' && (() => {
-              const expiryDate = profile.verification_expiry ? new Date(profile.verification_expiry) : null;
-              const daysUntilExpiry = expiryDate
-                ? Math.ceil((expiryDate.getTime() - Date.now()) / 86400000)
-                : null;
-              const isDueSoon = daysUntilExpiry !== null && daysUntilExpiry <= 30;
-              const isExpired = daysUntilExpiry !== null && daysUntilExpiry <= 0;
-              return (
-                <div className="space-y-3">
-                  <div className={`flex items-center gap-2 p-3.5 rounded-2xl text-xs font-bold ${
-                    isExpired
-                      ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300'
-                      : isDueSoon
-                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
-                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
-                  }`}>
-                    <ShieldCheck size={18} />
-                    <div className="flex-1">
-                      <span>{isExpired ? 'CNIC Verification Expired!' : isDueSoon ? 'Renewal Due Soon' : 'CNIC Verified ✓ (Active)'}</span>
-                      {expiryDate && (
-                        <p className="font-normal mt-0.5">
-                          {isExpired
-                            ? `Expired ${Math.abs(daysUntilExpiry!)} days ago — renew now to keep your badge`
-                            : isDueSoon
-                            ? `Expires in ${daysUntilExpiry} days — renew before ${expiryDate.toLocaleDateString('en-PK', { day: 'numeric', month: 'long' })}`
-                            : `Valid until ${expiryDate.toLocaleDateString('en-PK', { day: 'numeric', month: 'long', year: 'numeric' })} (${daysUntilExpiry} days)`
-                          }
-                        </p>
-                      )}
-                    </div>
-                    <RefreshCw size={15} className="shrink-0" />
-                  </div>
-
-                  {/* Re-verification schedule info */}
-                  <div className="p-3 rounded-2xl bg-gray-50 dark:bg-gray-800/60 text-[11px] text-gray-600 dark:text-gray-400 space-y-1.5">
-                    <p className="font-bold text-gray-700 dark:text-gray-300">📅 Periodic Re-Verification Schedule</p>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                        <span><strong>Every 6 months:</strong> Standard CNIC/NTN re-confirmation required</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                        <span><strong>30 days before:</strong> Due-soon reminder shown on your badge</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                        <span><strong>After expiry:</strong> Badge paused until renewed</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                    Providers are required to re-confirm their CNIC/NTN details every 6 months. This keeps the Verified badge meaningful for the entire neighborhood.
-                  </p>
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-bold text-gray-700 dark:text-gray-300">Re-verify / Renew CNIC</p>
-                    <input
-                      type="text"
-                      value={cnicInput}
-                      onChange={(e) => setCnicInput(e.target.value)}
-                      placeholder="Re-enter CNIC (e.g., 42101-1234567-1)"
-                      className="input text-xs"
-                    />
-                    <button onClick={handleSubmitVerification} className="btn-primary w-full py-2.5 text-xs font-bold flex items-center justify-center gap-2">
-                      <RefreshCw size={14} /> Renew Verification
-                    </button>
-                  </div>
-                  {/* Audit Trail */}
-                  {profile.verification_history && profile.verification_history.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Audit Trail</p>
-                      {profile.verification_history.map((item) => (
-                        <div key={item.id} className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 text-[10px] space-y-0.5">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-gray-800 dark:text-gray-200">{item.cnic_masked}</span>
-                            <span className={`font-bold ${item.status === 'valid' ? 'text-emerald-600' : item.status === 'due_soon' ? 'text-amber-600' : 'text-red-600'}`}>
-                              {item.status.replace('_', ' ').toUpperCase()}
-                            </span>
-                          </div>
-                          <p className="text-gray-400">Verified: {new Date(item.date).toLocaleDateString()}</p>
-                          <p className="text-gray-400">Valid until: {new Date(item.valid_until).toLocaleDateString()}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            {profile.verification_status === 'pending' && (
-              <div className="flex items-center gap-2 p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs font-bold">
-                <Star size={18} />
-                <span>Verification request pending admin approval</span>
-              </div>
-            )}
-            {(!profile.verification_status || profile.verification_status === 'rejected') && (
-              <div className="space-y-3 pt-2">
-                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                  Enter your CNIC or Business Registration number to obtain the Verified Citizen badge.
-                </p>
-                <input
-                  type="text"
-                  value={cnicInput}
-                  onChange={(e) => setCnicInput(e.target.value)}
-                  placeholder="e.g., 42101-1234567-1"
-                  className="input text-xs"
-                />
-                <button onClick={handleSubmitVerification} className="btn-primary w-full py-2.5 text-xs font-bold">
-                  Submit Verification
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* WATCHED AREAS SECTION */}
-      {section === 'watched_areas' && (
-        <div className="px-4 py-4 space-y-4 animate-fade-in">
-          {/* Info Banner */}
-          <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 text-xs text-indigo-700 dark:text-indigo-300 flex items-start gap-2.5">
-            <Eye size={16} className="shrink-0 mt-0.5" />
-            <span>
-              Follow specific areas you <strong>don't currently live in</strong> — plan your move, track distant family neighborhoods, or watch property listings in target cities.
-            </span>
-          </div>
-
-          {/* Currently Watched */}
-          {watchedAreas.length > 0 && (
-            <div className="bg-white dark:bg-gray-900 rounded-3xl p-4 border border-gray-200/80 dark:border-gray-800 space-y-2.5">
-              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Followed Areas ({watchedAreas.length})</h4>
-              {watchedAreas.map((area) => (
-                <div key={area.id} className="flex items-start justify-between p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-800/50 gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-                      <MapPin size={14} className="text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-gray-900 dark:text-gray-100">{area.name}</p>
-                      <p className="text-[10px] text-gray-500">{area.city} • {area.radius_km}km radius</p>
-                      {area.notes && <p className="text-[10px] text-indigo-600 dark:text-indigo-400 line-clamp-1">{area.notes}</p>}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteWatchArea(area.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 transition-colors shrink-0 cursor-pointer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Popular Neighborhoods to Follow */}
-          <div className="bg-white dark:bg-gray-900 rounded-3xl p-4 border border-gray-200/80 dark:border-gray-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Popular Neighborhoods</h4>
-              <button
-                onClick={() => setShowAddWatchArea(!showAddWatchArea)}
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
-              >
-                <Plus size={13} /> Custom Area
-              </button>
-            </div>
-
-            {/* Custom Area Form */}
-            {showAddWatchArea && (
-              <div className="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 space-y-3 animate-fade-in">
-                <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">Add Custom Watch Area (up to 20 km)</p>
-                <input
-                  type="text"
-                  value={customWatchName}
-                  onChange={(e) => setCustomWatchName(e.target.value)}
-                  placeholder="Area / Neighborhood name"
-                  className="input text-xs w-full"
-                />
-                <input
-                  type="text"
-                  value={customWatchCity}
-                  onChange={(e) => setCustomWatchCity(e.target.value)}
-                  placeholder="City (e.g., Karachi, Lahore)"
-                  className="input text-xs w-full"
-                />
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[11px] text-gray-600 dark:text-gray-400">
-                    <span>Watch Radius:</span>
-                    <span className="font-bold text-indigo-600">{customWatchRadius} km</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={20}
-                    step={1}
-                    value={customWatchRadius}
-                    onChange={(e) => setCustomWatchRadius(parseInt(e.target.value))}
-                    className="w-full accent-indigo-600"
-                  />
-                  <div className="flex justify-between text-[10px] text-gray-400 font-medium">
-                    <span>1 km (Walking)</span>
-                    <span>10 km (City)</span>
-                    <span>20 km (Max)</span>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setShowAddWatchArea(false); setCustomWatchName(''); setCustomWatchCity(''); }}
-                    className="flex-1 py-2 rounded-xl text-xs font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleAddCustomWatchArea}
-                    disabled={!customWatchName.trim()}
-                    className="flex-1 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer"
-                  >
-                    + Follow Area
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              {POPULAR_NEIGHBORHOODS.map((hood, idx) => {
-                const isAlreadyFollowed = watchedAreas.some((w) => w.name === hood.name && w.city === hood.city);
-                return (
-                  <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-gray-50 dark:bg-gray-800/60">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-gray-900 dark:text-gray-100">{hood.name}</p>
-                      <p className="text-[10px] text-gray-500">{hood.city} • {hood.radius_km}km scan radius</p>
-                      {hood.notes && <p className="text-[10px] text-gray-400 line-clamp-1">{hood.notes}</p>}
-                    </div>
-                    <button
-                      onClick={() => !isAlreadyFollowed && handleAddWatchArea(hood)}
-                      disabled={isAlreadyFollowed}
-                      className={`ml-3 shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                        isAlreadyFollowed
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 cursor-not-allowed'
-                          : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
-                      }`}
-                    >
-                      {isAlreadyFollowed ? 'Following ✓' : '+ Follow'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {watchedAreas.length === 0 && (
-            <p className="text-xs text-gray-400 text-center py-2">No areas followed yet. Add one from the list above or create a custom area.</p>
-          )}
-        </div>
-      )}
-
-      {/* PRIVACY & DATA SECTION */}
-      {section === 'privacy' && (
-        <div className="px-4 py-4 space-y-4 animate-fade-in">
-          {/* Data Export Card */}
-          <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-200/80 dark:border-gray-800 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600">
-                <Download size={20} />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm">Export My Data</h3>
-                <p className="text-xs text-gray-400">GDPR / PECA Privacy Compliance</p>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              Download a complete JSON package of all your data: profile, posts, CNIC verification audit trail, saved locations, watched areas, and preferences. Required for FYP documentation on privacy compliance.
-            </p>
-            <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 text-[11px] text-blue-700 dark:text-blue-300 space-y-1">
-              <p className="font-bold">What's included in the export:</p>
-              <ul className="space-y-0.5 pl-2">
-                {['Profile & contact info (phone masked)', 'All your posts & their locations', 'CNIC verification history (masked)', 'Saved radar locations & watched areas', 'Category preferences & app settings'].map((item) => (
-                  <li key={item} className="flex items-center gap-1.5">
-                    <CheckCircle2 size={11} className="text-blue-500 shrink-0" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <button
-              onClick={handleExportData}
-              className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-            >
-              <Download size={15} /> Download My Data Package
-            </button>
-          </div>
-
-          {/* Account Deletion Card */}
-          <div className="bg-white dark:bg-gray-900 rounded-3xl p-5 border border-red-200/60 dark:border-red-800/40 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600">
-                <AlertOctagon size={20} />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-red-700 dark:text-red-400">Delete Account & All Data</h3>
-                <p className="text-xs text-gray-400">Permanent and irreversible action</p>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              This will permanently delete your profile, all posts, comments, bookmarks, and verification records from Smart Radar. This action cannot be undone.
-            </p>
-            <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 text-[11px] text-red-700 dark:text-red-300">
-              <p className="font-bold mb-1">What gets deleted:</p>
-              <ul className="space-y-0.5 pl-2">
-                {['Profile, avatar, and CNIC records', 'All neighborhood posts you authored', 'Comments, votes, and bookmarks', 'Watched areas and saved locations', 'Verification audit trail'].map((item) => (
-                  <li key={item}>• {item}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <p className="text-[11px] text-gray-500">Type your display name <strong>"{profile.display_name}"</strong> to confirm:</p>
-              <input
-                type="text"
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-                placeholder="Type your display name to confirm"
-                className="input text-xs border-red-300 dark:border-red-700/60 focus:ring-red-500"
-              />
-              <button
-                onClick={() => setShowDeleteAccount(true)}
-                disabled={deleteConfirmText.toLowerCase() !== profile.display_name.toLowerCase()}
-                className="w-full py-3 rounded-2xl bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-              >
-                <AlertOctagon size={15} /> Delete My Account Permanently
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TODAY'S DAILY DIGEST PREVIEW MODAL */}
-      <Modal
-        open={showDigestModal}
-        onClose={() => setShowDigestModal(false)}
-        title="Today's Neighborhood Daily Digest"
-      >
-        <div className="space-y-3 py-1 max-h-[60vh] overflow-y-auto">
-          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-700 dark:text-indigo-300 flex items-center gap-2">
-            <Newspaper size={16} />
-            <span>Consolidated summary of non-urgent updates in your {radiusKm} km radar:</span>
-          </div>
-
-          {digestPosts.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-6">
-              No new non-urgent posts in your radar today. Check back later this evening!
-            </p>
-          ) : (
-            digestPosts.map((p) => {
-              const cat = CATEGORY_MAP[p.category];
-              return (
-                <div
-                  key={p.id}
-                  onClick={() => {
-                    setShowDigestModal(false);
-                    navigate(`/post/${p.id}`);
-                  }}
-                  className="p-3 rounded-2xl bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 transition-colors cursor-pointer space-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase text-primary-600">{cat?.label}</span>
-                    <span className="text-[10px] text-gray-400">{p.location_label || 'Nearby'}</span>
-                  </div>
-                  <h5 className="font-bold text-xs text-gray-900 dark:text-white leading-tight">{p.title}</h5>
-                  {p.description && <p className="text-[11px] text-gray-500 line-clamp-1">{p.description}</p>}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </Modal>
-
-      {/* Sign Out Confirmation Dialog */}
-      <ConfirmDialog
-        open={showSignOut}
-        title="Sign Out"
-        message="Are you sure you want to sign out of your Radar Citizen account?"
-        confirmLabel="Sign Out"
-        danger
-        onConfirm={async () => {
-          await signOut();
-          setShowSignOut(false);
-          navigate('/');
-        }}
-        onCancel={() => setShowSignOut(false)}
-      />
-
-      {/* Account Deletion Confirmation */}
-      <ConfirmDialog
-        open={showDeleteAccount}
-        title="Delete Account Permanently?"
-        message="This will permanently erase your profile, posts, and all associated data. This action cannot be reversed."
-        confirmLabel="Yes, Delete Everything"
-        danger
-        onConfirm={handleDeleteAccount}
-        onCancel={() => setShowDeleteAccount(false)}
-      />
-
-      <Toast message={toast.msg} show={toast.show} />
     </div>
   );
 }
 
-
-function SettingRow({
-  icon: Icon,
-  label,
-  sublabel,
-  value,
-  badge,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  sublabel?: string;
-  value?: string;
-  badge?: string;
-  onClick: () => void;
-}) {
+function Section({ id, icon: Icon, title, description, children, action }: { id: string; icon: typeof Radar; title: string; description?: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left cursor-pointer group"
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 flex items-center justify-center shrink-0 group-hover:text-primary-600">
-          <Icon size={16} />
+    <section id={id} className="card scroll-mt-24 p-5 lg:p-6">
+      <div className="mb-4 flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-600/10 text-primary-600">
+          <Icon className="h-[18px] w-[18px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-bold text-ink">{title}</h2>
+          {description && <p className="text-[13px] text-ink-2">{description}</p>}
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-gray-900 dark:text-gray-100 group-hover:text-primary-600">
-              {label}
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Row({ title, body, children }: { title: string; body?: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-ink">{title}</p>
+        {body && <p className="text-xs text-ink-2">{body}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function useSave() {
+  const { updateProfile } = useAuth();
+  const toast = useToast();
+  return async (patch: Parameters<typeof updateProfile>[0], msg?: string) => {
+    try {
+      await updateProfile(patch);
+      if (msg) toast.success(msg);
+    } catch (e) {
+      toast.error('Could not save', (e as Error).message);
+    }
+  };
+}
+
+// ── Account ─────────────────────────────────────────────────────────────────
+
+function AccountCard({ profile }: { profile: ProfileT }) {
+  const api = useApi();
+  const { user } = useAuth();
+  const toast = useToast();
+  const save = useSave();
+  const [name, setName] = useState(profile.display_name);
+  const [uploading, setUploading] = useState(false);
+  const file = useRef<HTMLInputElement>(null);
+  const { data: stats } = useQuery(() => api.listUserPosts(profile.id), [api, profile.id]);
+  useEffect(() => setName(profile.display_name), [profile.display_name]);
+
+  async function upload(f: File) {
+    if (!user) return;
+    setUploading(true);
+    try {
+      const [url] = await api.uploadImages(user.id, [f]);
+      await save({ avatar_url: url }, 'Profile photo updated');
+    } catch (e) {
+      toast.error('Upload failed', (e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const posts = stats ?? [];
+  return (
+    <section id="account" className="card scroll-mt-24 overflow-hidden">
+      <div className="h-24 bg-gradient-to-r from-primary-600 via-primary-700 to-[#131a4a] lg:h-28" />
+      <div className="px-5 pb-5 lg:px-6">
+        <div className="-mt-12 flex items-end gap-4">
+          <button onClick={() => file.current?.click()} className="group relative rounded-full ring-4 ring-surface" aria-label="Change profile photo">
+            <Avatar name={profile.display_name || 'You'} src={profile.avatar_url} size={88} />
+            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition group-hover:opacity-100">
+              <Camera className="h-6 w-6" />
             </span>
-            {badge && (
-              <span className="text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded">
-                {badge}
-              </span>
-            )}
+            {uploading && <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-xs font-bold text-white">…</span>}
+          </button>
+          <input ref={file} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+          <div className="ml-auto">
+            <TrustRing score={profile.trust_score} size={60} />
           </div>
-          {sublabel && <p className="text-[10px] text-gray-400 truncate">{sublabel}</p>}
         </div>
+        <div className="mt-3">
+          <h2 className="flex items-center gap-1.5 text-xl font-extrabold tracking-tight text-ink">
+            {profile.display_name || 'Add your name'} <VerifiedBadge profile={profile} size={18} />
+          </h2>
+          <p className="text-sm text-ink-2">
+            {maskPhone(profile.phone) || 'Admin account'} · Member since {formatDate(profile.created_at, { month: 'short', year: 'numeric' })}
+          </p>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {[
+            ['Posts', posts.length],
+            ['Upvotes', posts.reduce((s, p) => s + p.upvotes, 0)],
+            ['Trust', profile.trust_score],
+          ].map(([k, v]) => (
+            <div key={k} className="rounded-xl bg-surface-2 p-2.5 text-center">
+              <p className="text-lg font-extrabold tabular-nums text-ink">{v}</p>
+              <p className="text-[11px] font-semibold text-ink-3">{k}</p>
+            </div>
+          ))}
+        </div>
+        <form
+          className="mt-5 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim().length >= 2) save({ display_name: name.trim() }, 'Name updated');
+          }}
+        >
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} aria-label="Display name" placeholder="Display name" />
+          <button className="btn-secondary" disabled={name.trim() === profile.display_name || name.trim().length < 2}>
+            Save
+          </button>
+        </form>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {value && <span className="text-xs text-gray-400 font-semibold">{value}</span>}
-        <ChevronRight size={16} className="text-gray-400 group-hover:text-primary-600 transition-colors" />
+    </section>
+  );
+}
+
+// ── Verification & business ─────────────────────────────────────────────────
+
+function VerificationSection({ profile }: { profile: ProfileT }) {
+  const api = useApi();
+  const toast = useToast();
+  const [cnic, setCnic] = useState('');
+  const [business, setBusiness] = useState(profile.is_business);
+  const [busy, setBusy] = useState(false);
+  const [listingOpen, setListingOpen] = useState(false);
+  const { data: listings } = useQuery(() => api.listMyListings(profile.id), [api, profile.id], { scopes: ['listings', 'admin'] });
+  const v = verificationState(profile);
+  const status = profile.verification_status;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (cnic.replace(/\D/g, '').length !== 13) return;
+    setBusy(true);
+    try {
+      await api.auth.submitVerification(profile.id, cnic, business);
+      toast.success('Verification submitted', 'A moderator will review your CNIC, usually within 24 hours.');
+      setCnic('');
+    } catch (err) {
+      toast.error('Could not submit', (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Section id="verification" icon={ShieldCheck} title="CNIC verification" description="Verified neighbours get a blue badge, a trust boost and more responses.">
+      {status === 'approved' && v !== 'expired' ? (
+        <div className="flex items-center gap-3 rounded-2xl bg-primary-600/5 p-4 ring-1 ring-primary-500/20">
+          <BadgeCheck className="h-8 w-8 fill-primary-600 text-white" />
+          <div>
+            <p className="font-bold text-ink">You’re verified</p>
+            <p className="text-[13px] text-ink-2">
+              {profile.verification_expiry ? `Valid until ${formatDate(profile.verification_expiry)}` : 'No expiry'}
+              {v === 'due_soon' ? ' · renewal due soon' : ''}
+            </p>
+          </div>
+        </div>
+      ) : status === 'pending' ? (
+        <div className="rounded-2xl bg-warning-50 p-4 text-[13px] text-warning-700 dark:bg-warning-500/10 dark:text-warning-500">
+          <b>Under review.</b> A moderator is checking your CNIC. You’ll get your badge as soon as it’s approved.
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-3">
+          {status === 'rejected' && (
+            <p className="rounded-xl bg-danger-50 px-3.5 py-2.5 text-[13px] text-danger-700 dark:bg-danger-500/10 dark:text-danger-400">
+              Your last request wasn’t approved. Please check your CNIC number and try again.
+            </p>
+          )}
+          {v === 'expired' && <p className="rounded-xl bg-surface-2 px-3.5 py-2.5 text-[13px] text-ink-2">Your verification has expired — please re-submit.</p>}
+          <div>
+            <label className="label" htmlFor="cnic">CNIC number</label>
+            <input id="cnic" className="input tracking-wider" inputMode="numeric" placeholder="42101-1234567-1" value={cnic} onChange={(e) => setCnic(formatCnic(e.target.value))} />
+            <p className="mt-1.5 text-xs text-ink-3">Stored securely and visible only to Smart Radar moderators — never shown publicly.</p>
+          </div>
+          <label className="flex items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-3">
+            <span>
+              <span className="block text-sm font-semibold text-ink">I’m a business / service provider</span>
+              <span className="block text-xs text-ink-2">Electricians, tutors, shops, estate agents…</span>
+            </span>
+            <Switch label="Business account" checked={business} onChange={setBusiness} />
+          </label>
+          <button className="btn-primary w-full sm:w-auto" disabled={busy || cnic.replace(/\D/g, '').length !== 13}>
+            {busy ? 'Submitting…' : 'Submit for verification'}
+          </button>
+        </form>
+      )}
+
+      <div className="mt-5 border-t border-line pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-bold text-ink">
+              <Store className="h-4 w-4 text-ink-3" /> Business listings
+            </p>
+            <p className="text-xs text-ink-2">Get listed in the verified provider directory after admin approval.</p>
+          </div>
+          <button className="btn-secondary btn-sm" onClick={() => setListingOpen(true)}>
+            <Plus className="h-4 w-4" /> Submit
+          </button>
+        </div>
+        {!!listings?.length && (
+          <ul className="mt-3 space-y-2">
+            {listings.map((l) => (
+              <li key={l.id} className="flex items-center gap-3 rounded-xl bg-surface-2 px-3.5 py-2.5">
+                <Briefcase className="h-4 w-4 text-ink-3" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink">{l.business_name}</p>
+                  <p className="text-xs text-ink-3">{getCategory(l.category).label}</p>
+                </div>
+                <Badge tone={l.status === 'approved' ? 'success' : l.status === 'rejected' ? 'danger' : 'warning'}>{l.status}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-    </button>
+      <ListingSheet open={listingOpen} onClose={() => setListingOpen(false)} userId={profile.id} />
+    </Section>
+  );
+}
+
+function ListingSheet({ open, onClose, userId }: { open: boolean; onClose(): void; userId: string }) {
+  const api = useApi();
+  const toast = useToast();
+  const radar = useRadar();
+  const [f, setF] = useState({ business_name: '', category: 'home_services', description: '', phone: '' });
+  const [busy, setBusy] = useState(false);
+  const valid = f.business_name.trim().length >= 3 && toE164PK(f.phone);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    setBusy(true);
+    try {
+      await api.submitListing(userId, {
+        ...f,
+        business_name: f.business_name.trim(),
+        phone: toE164PK(f.phone)!,
+        lat: radar.coords.lat,
+        lng: radar.coords.lng,
+        location_label: radar.areaLabel,
+      });
+      toast.success('Listing submitted', 'It will appear in the directory once approved.');
+      onClose();
+      setF({ business_name: '', category: 'home_services', description: '', phone: '' });
+    } catch (err) {
+      toast.error('Could not submit', (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Submit a business listing" description="Listings are reviewed by moderators before going public." size="sm">
+      <form onSubmit={submit} className="space-y-3.5">
+        <div>
+          <label className="label">Business name</label>
+          <input data-autofocus className="input" value={f.business_name} onChange={(e) => setF({ ...f, business_name: e.target.value })} placeholder="e.g., Usman Electric Works" />
+        </div>
+        <div>
+          <label className="label">Category</label>
+          <select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
+            {CATEGORIES.filter((c) => ['services', 'rentals', 'marketplace', 'jobs'].includes(c.group)).map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label">Business phone</label>
+          <input className="input" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="0300 1234567" />
+        </div>
+        <div>
+          <label className="label">About</label>
+          <textarea className="input" rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Services, timings, experience…" />
+        </div>
+        <button className="btn-primary w-full" disabled={!valid || busy}>
+          {busy ? 'Submitting…' : 'Submit for review'}
+        </button>
+      </form>
+    </Sheet>
+  );
+}
+
+// ── Radar & places ──────────────────────────────────────────────────────────
+
+function RadarSection({ profile }: { profile: ProfileT }) {
+  const radar = useRadar();
+  const save = useSave();
+  const [placeOpen, setPlaceOpen] = useState(false);
+  const [watchOpen, setWatchOpen] = useState(false);
+
+  return (
+    <Section id="radar" icon={Radar} title="Radar & places" description="Your default scan radius, saved places and neighbourhoods you watch.">
+      <Row title="Scan radius" body="How far your feed looks by default.">
+        <Segmented
+          size="sm"
+          value={String(radar.radiusKm) as '3'}
+          onChange={(v) => radar.setRadiusKm(Number(v))}
+          options={['1', '2', '3', '4', '5'].map((k) => ({ value: k as '3', label: `${k}` }))}
+        />
+      </Row>
+
+      <div className="mt-2 border-t border-line pt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="flex items-center gap-2 text-sm font-bold text-ink">
+            <Bookmark className="h-4 w-4 text-ink-3" /> Saved places
+          </p>
+          <button className="btn-ghost btn-sm" onClick={() => setPlaceOpen(true)}>
+            <Plus className="h-4 w-4" /> Add
+          </button>
+        </div>
+        {profile.saved_locations.length === 0 ? (
+          <p className="text-[13px] text-ink-3">Save Home, Work or your kids’ school to switch your radar in one tap.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {profile.saved_locations.map((s) => (
+              <span key={s.label} className="chip-off pr-1.5">
+                <MapPin className="h-3.5 w-3.5" /> {s.label}
+                <button
+                  aria-label={`Remove ${s.label}`}
+                  className="ml-1 rounded-full p-1 hover:bg-surface-2"
+                  onClick={() => save({ saved_locations: profile.saved_locations.filter((x) => x.label !== s.label) }, 'Place removed')}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 border-t border-line pt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="flex items-center gap-2 text-sm font-bold text-ink">
+            <Eye className="h-4 w-4 text-ink-3" /> Watched areas
+          </p>
+          <button className="btn-ghost btn-sm" onClick={() => setWatchOpen(true)}>
+            <Plus className="h-4 w-4" /> Add
+          </button>
+        </div>
+        {profile.watched_areas.length === 0 ? (
+          <p className="text-[13px] text-ink-3">Moving soon? Watch another neighbourhood for rentals, jobs and events.</p>
+        ) : (
+          <ul className="space-y-2">
+            {profile.watched_areas.map((w) => (
+              <li key={w.id} className="flex items-center gap-3 rounded-xl bg-surface-2 px-3.5 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink">{w.name}</p>
+                  <p className="text-xs text-ink-3">
+                    {w.city} · {w.radius_km} km
+                  </p>
+                </div>
+                <Switch
+                  label={`Notifications for ${w.name}`}
+                  checked={w.notify}
+                  onChange={(v) => save({ watched_areas: profile.watched_areas.map((x) => (x.id === w.id ? { ...x, notify: v } : x)) })}
+                />
+                <button className="icon-btn h-9 w-9" aria-label={`Remove ${w.name}`} onClick={() => save({ watched_areas: profile.watched_areas.filter((x) => x.id !== w.id) }, 'Area removed')}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <SavePlaceSheet open={placeOpen} onClose={() => setPlaceOpen(false)} profile={profile} />
+      <WatchAreaSheet open={watchOpen} onClose={() => setWatchOpen(false)} profile={profile} />
+    </Section>
+  );
+}
+
+function SavePlaceSheet({ open, onClose, profile }: { open: boolean; onClose(): void; profile: ProfileT }) {
+  const radar = useRadar();
+  const save = useSave();
+  const [label, setLabel] = useState('Home');
+  const where = radar.coords;
+  return (
+    <Sheet open={open} onClose={onClose} title="Save this place" description={`Saves your current radar centre (${radar.areaLabel}).`} size="sm">
+      <div className="flex flex-wrap gap-2">
+        {['Home', 'Work', 'School', 'Gym', 'Parents'].map((l) => (
+          <button key={l} onClick={() => setLabel(l)} className={label === l ? 'chip-on' : 'chip-off'}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <input className="input mt-3" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={24} placeholder="Label" />
+      <button
+        className="btn-primary mt-4 w-full"
+        disabled={!label.trim() || profile.saved_locations.some((s) => s.label.toLowerCase() === label.trim().toLowerCase())}
+        onClick={async () => {
+          await save({ saved_locations: [...profile.saved_locations, { label: label.trim(), lat: where.lat, lng: where.lng }] }, 'Place saved');
+          onClose();
+        }}
+      >
+        Save place
+      </button>
+    </Sheet>
+  );
+}
+
+function WatchAreaSheet({ open, onClose, profile }: { open: boolean; onClose(): void; profile: ProfileT }) {
+  const save = useSave();
+  const [q, setQ] = useState('');
+  const dq = useDebounced(q, 450);
+  const [results, setResults] = useState<PlaceResult[]>([]);
+  const [radius, setRadius] = useState(3);
+
+  useEffect(() => {
+    let alive = true;
+    if (dq.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+    searchPlaces(dq).then((r) => alive && setResults(r));
+    return () => {
+      alive = false;
+    };
+  }, [dq]);
+
+  async function add(r: PlaceResult) {
+    const area: WatchedArea = {
+      id: uid('wa'),
+      name: r.label,
+      city: r.detail.split(',').slice(-2, -1)[0]?.trim() || r.detail.split(',')[0] || '',
+      lat: r.lat,
+      lng: r.lng,
+      radius_km: radius,
+      notify: true,
+      created_at: new Date().toISOString(),
+    };
+    await save({ watched_areas: [area, ...profile.watched_areas].slice(0, 10) }, `Watching ${r.label}`);
+    setQ('');
+    onClose();
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Watch a neighbourhood" description="Switch your radar to it anytime from the feed." size="sm">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+        <input data-autofocus className="input pl-10" placeholder="e.g., DHA Phase 6, Lahore" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+      <div className="mt-3 flex items-center justify-between">
+        <span className="text-sm font-semibold text-ink-2">Radius</span>
+        <Segmented size="sm" value={String(radius) as '3'} onChange={(v) => setRadius(Number(v))} options={['1', '2', '3', '4', '5'].map((k) => ({ value: k as '3', label: `${k} km` }))} />
+      </div>
+      <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line empty:hidden">
+        {results.map((r) => (
+          <li key={`${r.lat},${r.lng}`}>
+            <button onClick={() => add(r)} className="flex w-full items-start gap-3 px-3.5 py-3 text-left hover:bg-surface-2">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-ink">{r.label}</span>
+                <span className="block truncate text-xs text-ink-3">{r.detail}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Sheet>
+  );
+}
+
+// ── Feed preferences ────────────────────────────────────────────────────────
+
+function FeedSection({ profile }: { profile: ProfileT }) {
+  const save = useSave();
+  const toggle = (key: 'pinned_categories' | 'muted_categories', slug: string) => {
+    const list = profile[key];
+    save({ [key]: list.includes(slug) ? list.filter((s) => s !== slug) : [...list, slug] });
+  };
+  return (
+    <Section id="feed" icon={Pin} title="Feed preferences" description="Pinned categories appear first. Muted categories won’t notify you.">
+      <p className="eyebrow mb-2">Pinned</p>
+      <div className="flex flex-wrap gap-2">
+        {CATEGORIES.map((c) => {
+          const on = profile.pinned_categories.includes(c.slug);
+          return (
+            <button key={c.slug} onClick={() => toggle('pinned_categories', c.slug)} aria-pressed={on} className={on ? 'chip-on' : 'chip-off'}>
+              <c.icon className="h-4 w-4" style={on ? undefined : { color: c.color }} /> {c.short}
+            </button>
+          );
+        })}
+      </div>
+      <p className="eyebrow mb-2 mt-5 flex items-center gap-1.5">
+        <VolumeX className="h-3.5 w-3.5" /> Muted
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {CATEGORIES.map((c) => {
+          const on = profile.muted_categories.includes(c.slug);
+          return (
+            <button
+              key={c.slug}
+              onClick={() => toggle('muted_categories', c.slug)}
+              aria-pressed={on}
+              className={cn('chip', on ? 'border-danger-500/40 bg-danger-50 text-danger-700 dark:bg-danger-500/10 dark:text-danger-400' : 'border-line bg-surface text-ink-2')}
+            >
+              {c.short}
+            </button>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+// ── Notifications / digest ──────────────────────────────────────────────────
+
+function NotificationSection({ profile }: { profile: ProfileT }) {
+  const save = useSave();
+  const toast = useToast();
+  const pushAvailable = isFirebaseConfigured();
+  const [pushState, setPushState] = useState<NotificationPermission | 'unsupported'>(() => ('Notification' in window ? Notification.permission : 'unsupported'));
+
+  return (
+    <Section id="notifications" icon={Bell} title="Notifications & daily digest">
+      <div className="divide-y divide-line">
+        <Row
+          title="Push alerts"
+          body={pushAvailable ? 'Urgent alerts near you, even when the app is closed.' : 'Push notifications will be available once Firebase is configured.'}
+        >
+          <button
+            className="btn-secondary btn-sm"
+            disabled={!pushAvailable || pushState === 'granted' || pushState === 'unsupported'}
+            onClick={async () => {
+              const token = await requestNotificationPermission();
+              setPushState('Notification' in window ? Notification.permission : 'unsupported');
+              if (token) {
+                // Stored on the profile so a server-side sender can target this device.
+                await save({ fcm_token: token });
+                toast.success('Push alerts enabled');
+              } else if ('Notification' in window && Notification.permission === 'granted') {
+                toast.error('Push setup incomplete', 'The Firebase VAPID key is not configured yet.');
+              }
+            }}
+          >
+            {pushState === 'granted' ? 'Enabled' : pushState === 'denied' ? 'Blocked' : 'Enable'}
+          </button>
+        </Row>
+        <Row title="Daily digest" body="One summary of what happened around you each day.">
+          <Switch label="Daily digest" checked={profile.digest_enabled} onChange={(v) => save({ digest_enabled: v })} />
+        </Row>
+        {profile.digest_enabled && (
+          <>
+            <Row title="Delivery time">
+              <input type="time" className="input h-10 w-32" value={profile.digest_time} onChange={(e) => save({ digest_time: e.target.value })} />
+            </Row>
+            <div className="py-3">
+              <p className="mb-2 text-sm font-semibold text-ink">Include</p>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map((c) => {
+                  const on = profile.digest_categories.includes(c.slug);
+                  return (
+                    <button
+                      key={c.slug}
+                      aria-pressed={on}
+                      onClick={() =>
+                        save({ digest_categories: on ? profile.digest_categories.filter((s) => s !== c.slug) : [...profile.digest_categories, c.slug] })
+                      }
+                      className={on ? 'chip-on' : 'chip-off'}
+                    >
+                      {c.short}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+// ── Appearance ──────────────────────────────────────────────────────────────
+
+function AppearanceSection() {
+  const { pref, setPref } = useTheme();
+  return (
+    <Section id="appearance" icon={Palette} title="Appearance">
+      <Segmented
+        className="flex w-full"
+        value={pref}
+        onChange={setPref}
+        options={[
+          { value: 'light', label: 'Light', icon: Sun },
+          { value: 'dark', label: 'Dark', icon: Moon },
+          { value: 'system', label: 'System', icon: SunMoon },
+        ]}
+      />
+    </Section>
+  );
+}
+
+// ── Privacy ─────────────────────────────────────────────────────────────────
+
+function PrivacySection({ profile }: { profile: ProfileT }) {
+  const api = useApi();
+  const { demoReason } = useBackend();
+  const save = useSave();
+  const toast = useToast();
+  const [resetOpen, setResetOpen] = useState(false);
+
+  async function exportData() {
+    try {
+      const [posts, bookmarks, trusted, listings] = await Promise.all([
+        api.listUserPosts(profile.id),
+        api.listBookmarks(profile.id),
+        api.listTrustedContacts(profile.id),
+        api.listMyListings(profile.id),
+      ]);
+      const pkg = {
+        exported_at: new Date().toISOString(),
+        app: 'Smart Radar',
+        profile,
+        posts: posts.map((p) => {
+          const { author, ...rest } = p;
+          void author;
+          return rest;
+        }),
+        bookmarks: bookmarks.map((b) => ({ id: b.id, title: b.title })),
+        trusted_contacts: trusted,
+        provider_listings: listings,
+      };
+      const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `smart-radar-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Your data export is ready');
+    } catch (e) {
+      toast.error('Export failed', (e as Error).message);
+    }
+  }
+
+  return (
+    <Section id="privacy" icon={Download} title="Privacy & data">
+      <div className="divide-y divide-line">
+        <Row title="Download your data" body="Profile, posts, bookmarks, contacts and listings as JSON.">
+          <button className="btn-secondary btn-sm" onClick={exportData}>
+            <Download className="h-4 w-4" /> Export
+          </button>
+        </Row>
+        <Row title="Blocked users" body={profile.blocked_users.length ? `${profile.blocked_users.length} blocked — their posts are hidden from you.` : 'You haven’t blocked anyone.'}>
+          <button className="btn-secondary btn-sm" disabled={!profile.blocked_users.length} onClick={() => save({ blocked_users: [] }, 'Everyone unblocked')}>
+            Unblock all
+          </button>
+        </Row>
+        {demoReason && (
+          <Row title="Reset demo data" body="Deletes all demo posts, sign-ins and settings stored in this browser.">
+            <button className="btn-secondary btn-sm text-danger-600" onClick={() => setResetOpen(true)}>
+              <Trash2 className="h-4 w-4" /> Reset
+            </button>
+          </Row>
+        )}
+      </div>
+      <ConfirmDialog
+        open={resetOpen}
+        title="Reset all demo data?"
+        body="Posts you created, comments, bookmarks and settings in this browser will be erased and fresh sample data loaded."
+        confirmLabel="Reset"
+        tone="danger"
+        onClose={() => setResetOpen(false)}
+        onConfirm={() => {
+          resetDemoData();
+          window.location.assign(import.meta.env.BASE_URL);
+        }}
+      />
+    </Section>
   );
 }

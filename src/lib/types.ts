@@ -1,10 +1,21 @@
+export interface Coords {
+  lat: number;
+  lng: number;
+}
+
 export interface VerificationAuditItem {
   id: string;
   date: string;
   cnic_masked: string;
-  status: 'valid' | 'due_soon' | 'expired';
-  valid_until: string;
+  status: 'approved' | 'rejected';
+  valid_until: string | null;
   notes: string;
+}
+
+export interface SavedLocation {
+  label: string;
+  lat: number;
+  lng: number;
 }
 
 export interface WatchedArea {
@@ -19,38 +30,122 @@ export interface WatchedArea {
   created_at: string;
 }
 
+export type VerificationStatus = 'pending' | 'approved' | 'rejected' | null;
+export type ThemePref = 'light' | 'dark' | 'system';
+
 export interface Profile {
   id: string;
-  phone: string;
+  phone: string | null;
   display_name: string;
   avatar_url: string | null;
   is_business: boolean;
-  /** Set server-side only — never writable from client code */
+  /** Read-only on the client — set server-side only. */
   is_admin?: boolean;
-  cnic_number: string | null;
-  verification_status: 'pending' | 'approved' | 'rejected' | null;
-  verification_date?: string;
-  verification_expiry?: string;
+  verification_status: VerificationStatus;
+  verification_date?: string | null;
+  verification_expiry?: string | null;
   verification_history?: VerificationAuditItem[];
   trust_score: number;
   radius_km: number;
   saved_locations: SavedLocation[];
-  watched_areas?: WatchedArea[];
+  watched_areas: WatchedArea[];
   pinned_categories: string[];
   muted_categories: string[];
-  digest_categories?: string[];
-  digest_enabled?: boolean;
-  digest_time?: string;
+  digest_categories: string[];
+  digest_enabled: boolean;
+  digest_time: string;
   blocked_users: string[];
-  theme: 'light' | 'dark';
+  theme: ThemePref;
+  created_at: string;
+  /** Set by admins only. Suspended users can browse but not post or interact. */
+  is_banned?: boolean;
+  banned_reason?: string | null;
+  /** App owner — manages admins and app-wide settings. Always also an admin. */
+  is_owner?: boolean;
+}
+
+/** App-wide settings controlled by the owner. */
+export interface AppSettings {
+  announcement: string | null;
+  announcement_tone: 'info' | 'warning' | 'success';
+  posting_enabled: boolean;
+  disabled_categories: string[];
+  verified_only_categories: string[];
+  default_radius_km: number;
+  updated_at: string | null;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  announcement: null,
+  announcement_tone: 'info',
+  posting_enabled: true,
+  disabled_categories: [],
+  verified_only_categories: [],
+  default_radius_km: 3,
+  updated_at: null,
+};
+
+/** Row in the admin user directory. */
+export interface AdminUser {
+  id: string;
+  display_name: string;
+  phone: string | null;
+  is_business: boolean;
+  is_admin: boolean;
+  is_owner: boolean;
+  is_banned: boolean;
+  banned_reason: string | null;
+  verification_status: VerificationStatus;
+  verification_expiry: string | null;
+  trust_score: number;
+  created_at: string;
+  post_count: number;
+  reports_received: number;
+}
+
+export type AdminUserFilter = 'all' | 'verified' | 'business' | 'suspended' | 'admins';
+export type AdminUserAction = 'ban' | 'unban' | 'revoke_verification' | 'set_trust';
+
+export interface PostReport {
+  id: string;
+  post_id: string;
+  user_id: string;
+  reason: string | null;
   created_at: string;
 }
 
-export interface SavedLocation {
-  label: string;
-  lat: number;
-  lng: number;
+/** Fields a user may change on their own profile. */
+export type ProfilePatch = Partial<
+  Pick<
+    Profile,
+    | 'display_name'
+    | 'avatar_url'
+    | 'is_business'
+    | 'radius_km'
+    | 'saved_locations'
+    | 'watched_areas'
+    | 'pinned_categories'
+    | 'muted_categories'
+    | 'digest_categories'
+    | 'digest_enabled'
+    | 'digest_time'
+    | 'blocked_users'
+    | 'theme'
+  >
+> & { fcm_token?: string | null };
+
+/** Safe, public subset of a profile (never includes phone or CNIC). */
+export interface PublicProfile {
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_business: boolean;
+  verification_status: VerificationStatus;
+  verification_expiry: string | null;
+  trust_score: number;
 }
+
+export type PostStatus = 'active' | 'resolved' | 'expired' | 'hidden';
 
 export interface Post {
   id: string;
@@ -63,12 +158,12 @@ export interface Post {
   lat: number;
   lng: number;
   location_label: string | null;
-  status: 'active' | 'resolved' | 'expired';
+  status: PostStatus;
   is_featured: boolean;
   women_only: boolean;
   expires_at: string | null;
-  scheduled_for?: string | null;
-  reposted_from_id?: string | null;
+  scheduled_for: string | null;
+  reposted_from_id: string | null;
   confirm_count: number;
   resolve_count: number;
   report_count: number;
@@ -78,12 +173,33 @@ export interface Post {
   updated_at: string;
 }
 
-export interface Vote {
-  id: string;
-  post_id: string;
-  user_id: string;
-  vote_type: 'up' | 'down';
-  created_at: string;
+export interface PostWithRelations extends Post {
+  author?: PublicProfile | null;
+  distance_km?: number;
+  comment_count?: number;
+  is_bookmarked?: boolean;
+  user_vote?: 'up' | 'down' | null;
+  user_confirmation?: 'confirm' | 'resolve' | null;
+  poll_options?: PollOption[];
+  user_poll_vote?: string | null;
+  rsvp_count?: { going: number; interested: number };
+  user_rsvp?: 'going' | 'interested' | null;
+}
+
+export interface NewPostInput {
+  category: string;
+  title: string;
+  description: string;
+  metadata: Record<string, unknown>;
+  image_urls: string[];
+  lat: number;
+  lng: number;
+  location_label: string;
+  women_only: boolean;
+  expires_at: string | null;
+  scheduled_for: string | null;
+  reposted_from_id?: string | null;
+  poll_options?: string[];
 }
 
 export interface Comment {
@@ -92,31 +208,7 @@ export interface Comment {
   user_id: string;
   body: string;
   created_at: string;
-  author_name?: string;
-  author_avatar?: string | null;
-}
-
-export interface Bookmark {
-  id: string;
-  post_id: string;
-  user_id: string;
-  created_at: string;
-}
-
-export interface Report {
-  id: string;
-  post_id: string;
-  user_id: string;
-  reason: string | null;
-  created_at: string;
-}
-
-export interface Confirmation {
-  id: string;
-  post_id: string;
-  user_id: string;
-  confirmation_type: 'confirm' | 'resolve';
-  created_at: string;
+  author?: PublicProfile | null;
 }
 
 export interface PollOption {
@@ -126,11 +218,13 @@ export interface PollOption {
   vote_count: number;
 }
 
-export interface PollVote {
+export interface EventRsvp {
   id: string;
-  option_id: string;
+  post_id: string;
   user_id: string;
+  status: 'going' | 'interested';
   created_at: string;
+  author?: PublicProfile | null;
 }
 
 export interface EmergencyContact {
@@ -148,42 +242,6 @@ export interface TrustedContact {
   user_id: string;
   name: string;
   phone: string;
-  created_at: string;
-}
-
-export interface EventRsvp {
-  id: string;
-  post_id: string;
-  user_id: string;
-  status: 'going' | 'interested';
-  user_name: string;
-  user_avatar?: string | null;
-  created_at: string;
-}
-
-export interface PostWithRelations extends Post {
-  author_name?: string;
-  author_avatar?: string | null;
-  author_is_verified?: boolean;
-  author_verification_status?: 'valid' | 'due_soon' | 'expired';
-  author_verification_expiry?: string;
-  is_bookmarked?: boolean;
-  user_vote?: 'up' | 'down' | null;
-  poll_options?: PollOption[];
-  user_poll_vote?: string | null;
-  rsvp_count?: { going: number; interested: number };
-  user_rsvp?: 'going' | 'interested' | null;
-}
-
-// ─── Admin types ──────────────────────────────────────────────────────────────
-
-export interface AdminAuditLog {
-  id: string;
-  admin_id: string;
-  action: string;
-  target_type: 'post' | 'listing' | 'profile' | 'report';
-  target_id: string | null;
-  details: Record<string, unknown>;
   created_at: string;
 }
 
@@ -205,11 +263,48 @@ export interface ProviderListing {
   updated_at: string;
 }
 
-export interface OtpRateLimit {
+export interface AdminAuditLog {
   id: string;
-  phone: string;
-  attempts: number;
-  window_start: string;
+  admin_id: string;
+  action: string;
+  target_type: 'post' | 'listing' | 'profile' | 'report' | 'emergency_contact' | 'settings';
+  target_id: string | null;
+  details: Record<string, unknown>;
   created_at: string;
+  admin_name?: string;
 }
 
+export interface VerificationRequest {
+  user_id: string;
+  display_name: string;
+  phone: string | null;
+  cnic_number: string | null;
+  is_business: boolean;
+  trust_score: number;
+  requested_at: string;
+}
+
+export interface AdminOverview {
+  suspendedUsers?: number;
+  totalPosts: number;
+  activePosts: number;
+  hiddenPosts: number;
+  reportedPosts: number;
+  totalUsers: number;
+  pendingVerifications: number;
+  pendingListings: number;
+  postsByDay: { date: string; count: number }[];
+  postsByCategory: { category: string; count: number }[];
+}
+
+export type FeedSort = 'nearest' | 'latest' | 'top';
+
+export interface FeedQuery {
+  center: Coords;
+  radiusKm: number;
+  category?: string | null;
+  search?: string;
+  sort?: FeedSort;
+  includeResolved?: boolean;
+  limit?: number;
+}

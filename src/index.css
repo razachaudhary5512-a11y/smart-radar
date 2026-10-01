@@ -1,91 +1,195 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg: 246 247 251;
+    --surface: 255 255 255;
+    --surface-2: 241 243 248;
+    --line: 228 231 239;
+    --ink: 15 23 42;
+    --ink-2: 71 85 105;
+    --ink-3: 140 152 172;
+    color-scheme: light;
+  }
+  .dark {
+    --bg: 8 11 19;
+    --surface: 16 20 31;
+    --surface-2: 24 29 43;
+    --line: 36 42 60;
+    --ink: 236 240 247;
+    --ink-2: 165 174 192;
+    --ink-3: 106 116 138;
+    color-scheme: dark;
+  }
+
   html {
     -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
   }
   body {
-    @apply font-sans antialiased bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100;
+    @apply bg-bg text-ink font-sans antialiased;
     overscroll-behavior-y: none;
+    font-feature-settings: 'cv11', 'ss01';
   }
-  * {
-    @apply transition-colors duration-200;
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary-500 ring-offset-2 ring-offset-bg;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
 }
 
 @layer components {
   .card {
-    @apply bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800;
+    @apply bg-surface rounded-2xl border border-line shadow-card;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 h-11 text-sm font-semibold
+      transition-all duration-150 active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none select-none whitespace-nowrap;
+  }
+  .btn-sm {
+    @apply h-9 px-3 text-[13px] rounded-lg;
   }
   .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700 shadow-sm shadow-primary-600/20;
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 shadow-glow;
   }
   .btn-secondary {
-    @apply btn bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700;
+    @apply btn bg-surface-2 text-ink hover:bg-line/70;
+  }
+  .btn-outline {
+    @apply btn border border-line bg-surface text-ink hover:bg-surface-2;
+  }
+  .btn-ghost {
+    @apply btn text-ink-2 hover:bg-surface-2 hover:text-ink;
   }
   .btn-danger {
     @apply btn bg-danger-600 text-white hover:bg-danger-700;
   }
-  .btn-ghost {
-    @apply btn text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800;
+  .icon-btn {
+    @apply inline-flex items-center justify-center h-10 w-10 rounded-xl text-ink-2 hover:bg-surface-2 hover:text-ink
+      transition-colors active:scale-95 disabled:opacity-40;
   }
   .input {
-    @apply w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply w-full h-11 px-3.5 rounded-xl bg-surface border border-line text-ink text-[15px] placeholder:text-ink-3
+      focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 transition;
   }
-  .chip {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 whitespace-nowrap;
+  textarea.input {
+    @apply h-auto py-3 leading-relaxed;
   }
-  .chip-active {
-    @apply bg-primary-600 text-white shadow-sm shadow-primary-600/20;
-  }
-  .chip-inactive {
-    @apply bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400;
+  select.input {
+    @apply pr-9 appearance-none bg-no-repeat;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238c98ac' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
   }
   .label {
-    @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5;
+    @apply block text-[13px] font-semibold text-ink-2 mb-1.5;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-[13px] font-semibold whitespace-nowrap
+      border transition-all active:scale-95 select-none;
+  }
+  .chip-off {
+    @apply chip bg-surface border-line text-ink-2 hover:text-ink hover:border-ink-3/50;
+  }
+  .chip-on {
+    @apply chip bg-ink text-bg border-ink;
+  }
+  .eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.08em] text-ink-3;
+  }
+  .skeleton {
+    @apply rounded-lg bg-surface-2;
+    background-image: linear-gradient(90deg, transparent 0, rgb(var(--line) / 0.6) 50%, transparent 100%);
+    background-size: 400px 100%;
+    background-repeat: no-repeat;
+    animation: shimmer 1.6s linear infinite;
   }
 }
 
-/* Leaflet overrides */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .radar-grid {
+    background-image: radial-gradient(circle at center, rgb(var(--line)) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+}
+
+/* Scrollbars (desktop) */
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--line));
+    border-radius: 999px;
+    border: 3px solid rgb(var(--bg));
+  }
+}
+
+/* Leaflet */
 .leaflet-container {
   font-family: inherit;
-  background: #aadaff;
+  background: rgb(var(--surface-2));
 }
-.dark .leaflet-container {
-  filter: brightness(0.85) contrast(1.1);
+.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.7);
 }
 .leaflet-control-attribution {
-  display: none !important;
+  font-size: 10px !important;
+  background: rgb(var(--surface) / 0.8) !important;
+  color: rgb(var(--ink-3)) !important;
 }
-.custom-pin {
+.leaflet-control-attribution a {
+  color: rgb(var(--ink-2)) !important;
+}
+.leaflet-control-zoom {
+  border: 1px solid rgb(var(--line)) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 16px -6px rgb(15 23 42 / 0.3) !important;
+}
+.leaflet-control-zoom a {
+  background: rgb(var(--surface)) !important;
+  color: rgb(var(--ink)) !important;
+  border-color: rgb(var(--line)) !important;
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+}
+.sr-pin {
   background: transparent;
   border: none;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
-}
-
-/* No scrollbar utility */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

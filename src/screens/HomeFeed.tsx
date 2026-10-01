@@ -1,733 +1,479 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  SlidersHorizontal,
-  Pin,
-  Search,
-  Radar,
-  Vote,
-  Wrench,
-  Home,
-  MessageSquarePlus,
-  Sparkles,
-  LayoutGrid,
-  Plus,
-  Siren,
-  Star,
-  MapPin,
+  AlertTriangle,
+  ArrowRight,
+  CalendarDays,
   ChevronDown,
-  Eye,
+  Clock,
+  Flame,
+  LocateFixed,
+  MapPin,
+  Navigation,
+  Phone,
+  Plus,
+  Radar,
+  Search,
+  ShieldCheck,
+  Siren,
+  Sparkles,
+  TrendingUp,
+  X,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { useApi, useBackend } from '@/data';
+import { finalizeFeed } from '@/data/feed';
 import { useAuth } from '@/lib/auth';
-import { useLocation } from '@/lib/location-context';
-import { CATEGORIES, CATEGORY_MAP, GROUP_LABELS, type CategoryConfig } from '@/lib/categories';
-import type { PostWithRelations, WatchedArea } from '@/lib/types';
-import { haversineKm, type Coords } from '@/lib/location';
-import { getStoredLocalPosts, getStoredWatchedAreas } from '@/lib/dummy-data';
-import { PostCard } from '@/components/PostCard';
-import { EmptyState, Spinner, Modal, Toast } from '@/components/ui';
-import { QuickPostWidget } from '@/components/QuickPostWidget';
+import { useRadar } from '@/lib/location-context';
+import { useLocalStorage, useQuery } from '@/lib/hooks';
+import { CATEGORIES, getCategory, headlineValue } from '@/lib/categories';
+import { cn, greeting, telLink, timeAgo } from '@/lib/format';
+import { formatDistance } from '@/lib/location';
+import type { FeedSort, PostWithRelations } from '@/lib/types';
+import { PostCard } from '@/components/post/PostCard';
+import { RadarScope } from '@/components/RadarScope';
+import { AreaSheet, RadiusSheet } from '@/components/radar/AreaSheet';
+import { LogoMark } from '@/components/layout/Logo';
+import { ProvidersCard, ProvidersSection } from '@/components/Providers';
+import { CategoryIcon, EmptyState, ErrorState, PostCardSkeleton, Segmented } from '@/components/ui';
+
+const MAX_RADIUS = 5;
 
 export function HomeFeed() {
+  const api = useApi();
+  const { user, profile } = useAuth();
+  const radar = useRadar();
   const navigate = useNavigate();
-  const { profile, session } = useAuth();
-  const { coords, radiusKm, setRadiusKm } = useLocation();
-  const [posts, setPosts] = useState<PostWithRelations[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [showRadiusModal, setShowRadiusModal] = useState(false);
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; show: boolean }>({ msg: '', show: false });
-  const [activeCount, setActiveCount] = useState(38);
-  // Area switcher: null = local GPS, or a WatchedArea id
-  const [activeWatchedArea, setActiveWatchedArea] = useState<WatchedArea | null>(null);
-  const [watchedAreas, setWatchedAreas] = useState<WatchedArea[]>([]);
-  const [showAreaSwitcher, setShowAreaSwitcher] = useState(false);
-  const [showQuickWidget, setShowQuickWidget] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const category = params.get('category');
+  const [sort, setSort] = useLocalStorage<FeedSort>('sr_feed_sort', 'latest');
+  const [areaOpen, setAreaOpen] = useState(false);
+  const [radiusOpen, setRadiusOpen] = useState(false);
 
-  // Load watched areas
-  useEffect(() => {
-    const areas = getStoredWatchedAreas();
-    setWatchedAreas(areas);
-    const handleUpdate = () => setWatchedAreas(getStoredWatchedAreas());
-    window.addEventListener('smart_radar_watched_areas_updated', handleUpdate);
-    return () => window.removeEventListener('smart_radar_watched_areas_updated', handleUpdate);
-  }, []);
+  // Fetch the full 5 km once; radius, category and sort are applied instantly on the client.
+  const { data, loading, error, refetch, setData } = useQuery(
+    () => api.listPosts({ center: radar.coords, radiusKm: MAX_RADIUS, sort: 'latest' }, user?.id),
+    [api, radar.coords.lat, radar.coords.lng, user?.id],
+    { scopes: ['posts', 'bookmarks', 'comments', 'rsvps'] }
+  );
+  const all = useMemo(() => data ?? [], [data]);
 
-  const pinnedCategories = profile?.pinned_categories ?? [];
+  const inRadius = useMemo(() => all.filter((p) => (p.distance_km ?? 0) <= radar.radiusKm), [all, radar.radiusKm]);
+  const feed = useMemo(
+    () => finalizeFeed(inRadius, { center: radar.coords, radiusKm: radar.radiusKm, category, sort }),
+    [inRadius, radar.coords, radar.radiusKm, category, sort]
+  );
+  const urgent = useMemo(() => inRadius.filter((p) => getCategory(p.category).isUrgent).slice(0, 8), [inRadius]);
 
-  const showToast = (msg: string) => {
-    setToast({ msg, show: true });
-    setTimeout(() => setToast({ msg: '', show: false }), 2000);
+  const stats = useMemo(() => {
+    const dayAgo = Date.now() - 86_400_000;
+    const weekAhead = Date.now() + 7 * 86_400_000;
+    return {
+      active: inRadius.length,
+      urgent: urgent.length,
+      today: inRadius.filter((p) => new Date(p.created_at).getTime() > dayAgo).length,
+      events: inRadius.filter(
+        (p) => p.category === 'local_event' && typeof p.metadata.event_date === 'string' && new Date(p.metadata.event_date).getTime() < weekAhead
+      ).length,
+    };
+  }, [inRadius, urgent.length]);
+
+  const [localPinned] = useLocalStorage<string[]>('sr_pinned', []);
+  const chipOrder = useMemo(() => {
+    const pinned = profile?.pinned_categories?.length ? profile.pinned_categories : localPinned;
+    const counts = new Map<string, number>();
+    inRadius.forEach((p) => counts.set(p.category, (counts.get(p.category) ?? 0) + 1));
+    return [...CATEGORIES]
+      .map((c) => ({ c, n: counts.get(c.slug) ?? 0, pinned: pinned.includes(c.slug) }))
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.n - a.n);
+  }, [inRadius, profile?.pinned_categories, localPinned]);
+
+  const updatePost = useCallback((p: PostWithRelations) => setData((list) => (list ?? []).map((x) => (x.id === p.id ? { ...x, ...p } : x))), [setData]);
+  const setCategory = (slug: string | null) => {
+    const next = new URLSearchParams(params);
+    if (slug) next.set('category', slug);
+    else next.delete('category');
+    setParams(next, { replace: true });
   };
+  const countFor = useCallback((km: number) => all.filter((p) => (p.distance_km ?? 0) <= km).length, [all]);
 
-  // Effective coords: use watched area center if selected, else GPS
-  const effectiveCoords = activeWatchedArea
-    ? { lat: activeWatchedArea.lat, lng: activeWatchedArea.lng }
-    : coords;
-  const effectiveRadius = activeWatchedArea ? activeWatchedArea.radius_km : radiusKm;
-
-  const loadPosts = useCallback(async () => {
-    setLoading(true);
-
-    let query = supabase
-      .from('posts')
-      .select('*')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    if (activeCategory) {
-      query = query.eq('category', activeCategory);
-    }
-
-    let rawData: any[] = [];
-    try {
-      const { data, error } = await query;
-      if (!error && data) {
-        rawData = data;
-      }
-    } catch {
-      // Fallback
-    }
-
-    const localList = getStoredLocalPosts();
-    const allCombined = [...localList, ...rawData];
-
-    // Deduplicate by ID
-    const seenIds = new Set<string>();
-    const uniquePosts: any[] = [];
-    for (const p of allCombined) {
-      if (!seenIds.has(p.id)) {
-        seenIds.add(p.id);
-        uniquePosts.push(p);
-      }
-    }
-
-    // Filter by category if selected
-    const categoryFiltered = activeCategory
-      ? uniquePosts.filter((p) => p.category === activeCategory)
-      : uniquePosts;
-
-    // Filter by radius and scheduled status
-    // When viewing a watched area, use that area's center + radius; otherwise use GPS coords
-    const scanCoords = activeWatchedArea
-      ? { lat: activeWatchedArea.lat, lng: activeWatchedArea.lng }
-      : coords;
-    const scanRadius = activeWatchedArea ? activeWatchedArea.radius_km : radiusKm;
-
-    const filtered = categoryFiltered.filter((p) => {
-      if (p.scheduled_for && new Date(p.scheduled_for).getTime() > Date.now()) {
-        return false;
-      }
-      const dist = haversineKm(scanCoords, { lat: p.lat, lng: p.lng });
-      const catRadius = CATEGORY_MAP[p.category]?.defaultRadiusKm ?? scanRadius;
-      const effectiveR = Math.min(catRadius, scanRadius);
-      // When viewing watched area: show ALL categories (property, deals, events prioritized)
-      if (activeWatchedArea) {
-        return dist <= scanRadius;
-      }
-      return dist <= effectiveR;
-    });
-
-    // Fetch author profiles for supabase items
-    const userIds = [...new Set(filtered.map((p) => p.user_id).filter((uid) => uid && !uid.startsWith('user-')))];
-    let profileMap = new Map<string, any>();
-    if (userIds.length > 0) {
-      try {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, display_name, avatar_url')
-          .in('id', userIds);
-        profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
-      } catch {}
-    }
-
-    // Fetch user's bookmarks and votes
-    let bookmarkSet = new Set<string>();
-    let voteMap = new Map<string, 'up' | 'down'>();
-
-    if (session?.user) {
-      try {
-        const [{ data: bookmarks }, { data: votes }] = await Promise.all([
-          supabase.from('bookmarks').select('post_id').eq('user_id', session.user.id),
-          supabase.from('votes').select('post_id, vote_type').eq('user_id', session.user.id),
-        ]);
-        bookmarkSet = new Set((bookmarks ?? []).map((b) => b.post_id));
-        voteMap = new Map((votes ?? []).map((v) => [v.post_id, v.vote_type as 'up' | 'down']));
-      } catch {
-        // Fallback
-      }
-    }
-
-    const enriched: any[] = filtered.map((p) => {
-      const prof = profileMap.get(p.user_id);
-      return {
-        ...p,
-        author_name: p.author_name ?? prof?.display_name ?? 'Community Member',
-        author_avatar: p.author_avatar ?? prof?.avatar_url ?? null,
-        is_bookmarked: p.is_bookmarked ?? bookmarkSet.has(p.id),
-        user_vote: p.user_vote ?? (voteMap.get(p.id) ?? null),
-      };
-    });
-
-    // Sort: pinned categories first, then by recency
-    if (!activeCategory && pinnedCategories.length > 0) {
-      enriched.sort((a, b) => {
-        const aPinned = pinnedCategories.includes(a.category) ? 0 : 1;
-        const bPinned = pinnedCategories.includes(b.category) ? 0 : 1;
-        if (aPinned !== bPinned) return aPinned - bPinned;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-    }
-
-    // Featured posts on top
-    enriched.sort((a, b) => {
-      if (a.is_featured && !b.is_featured) return -1;
-      if (!a.is_featured && b.is_featured) return 1;
-      return 0;
-    });
-
-    setPosts(enriched);
-    setActiveCount(enriched.length + 18);
-    setLoading(false);
-  }, [coords, radiusKm, activeCategory, activeWatchedArea, session?.user, pinnedCategories]);
-
-  useEffect(() => {
-    loadPosts();
-    const handleUpdate = () => loadPosts();
-    window.addEventListener('smart_radar_posts_updated', handleUpdate);
-    return () => window.removeEventListener('smart_radar_posts_updated', handleUpdate);
-  }, [loadPosts]);
-
-  async function handleVote(postId: string) {
-    const post = posts.find((p) => p.id === postId);
-    if (!post) return;
-
-    const isUpvoted = post.user_vote === 'up';
-    const newVote = isUpvoted ? null : 'up';
-    const delta = isUpvoted ? -1 : 1;
-
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId
-          ? {
-              ...p,
-              user_vote: newVote,
-              upvotes: Math.max(0, p.upvotes + delta),
-            }
-          : p
-      )
-    );
-
-    if (session?.user) {
-      try {
-        if (isUpvoted) {
-          await supabase.from('votes').delete().eq('post_id', postId).eq('user_id', session.user.id);
-        } else {
-          await supabase.from('votes').upsert({ post_id: postId, user_id: session.user.id, vote_type: 'up' });
-        }
-      } catch {}
-    }
-  }
-
-  async function handleBookmark(postId: string) {
-    const post = posts.find((p) => p.id === postId);
-    if (!post) return;
-
-    if (post.is_bookmarked) {
-      if (session?.user) {
-        try {
-          await supabase.from('bookmarks').delete().eq('post_id', postId).eq('user_id', session.user.id);
-        } catch {}
-      }
-      showToast('Removed from saved');
-    } else {
-      if (session?.user) {
-        try {
-          await supabase.from('bookmarks').insert({ post_id: postId, user_id: session.user.id });
-        } catch {}
-      }
-      showToast('Saved to your bookmarks');
-    }
-    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, is_bookmarked: !p.is_bookmarked } : p)));
-  }
-
-  const orderedCategories = [...CATEGORIES].sort((a, b) => {
-    const aPinned = pinnedCategories.includes(a.slug) ? 0 : 1;
-    const bPinned = pinnedCategories.includes(b.slug) ? 0 : 1;
-    return aPinned - bPinned;
-  });
+  const firstName = profile?.display_name?.split(' ')[0];
 
   return (
-    <div className="pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800/80 shadow-sm">
-        <div className="px-4 pt-3.5 pb-2.5">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-primary-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-primary-500/20">
-                <Radar size={20} className="animate-spin-slow" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-200 bg-clip-text text-transparent">
-                    Smart Radar
-                  </h1>
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-50 dark:bg-primary-950 text-primary-600 dark:text-primary-400 border border-primary-200/50 dark:border-primary-800/50">
-                    Live
-                  </span>
-                </div>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
-                  {activeWatchedArea ? `📍 ${activeWatchedArea.name}, ${activeWatchedArea.city}` : 'Hyperlocal Neighborhood Feed'}
-                </p>
-              </div>
+    <div>
+      {/* Mobile header */}
+      <header className="sticky top-0 z-30 border-b border-line/70 bg-bg/85 pt-safe backdrop-blur-xl lg:hidden">
+        <div className="flex h-14 items-center gap-2 px-3">
+          <LogoMark size={30} className="ml-1" />
+          <button onClick={() => setAreaOpen(true)} className="flex min-w-0 flex-1 items-center gap-1 rounded-xl px-2 py-1.5 text-left hover:bg-surface-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-3">Scanning {radar.radiusKm} km around</p>
+              <p className="flex items-center gap-1 truncate text-[15px] font-bold text-ink">
+                <span className="truncate">{radar.areaLabel}</span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-ink-3" />
+              </p>
             </div>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => navigate('/profile')}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-xs transition-colors cursor-pointer"
-                title="View your profile & settings"
-              >
-                <img
-                  src={profile?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'}
-                  alt={profile?.display_name || 'User'}
-                  className="w-5 h-5 rounded-full object-cover ring-1 ring-white"
-                />
-                <span className="max-w-[70px] truncate font-bold text-[11px]">
-                  {profile?.display_name?.split(' ')[0] || 'Profile'}
-                </span>
-              </button>
-
-              <button
-                onClick={() => navigate('/search')}
-                className="p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                aria-label="Search"
-              >
-                <Search size={18} />
-              </button>
-
-              {!activeWatchedArea && (
-                <button
-                  onClick={() => setShowRadiusModal(true)}
-                  className="p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 text-xs font-semibold"
-                  title="Change radius"
-                >
-                  <SlidersHorizontal size={18} />
-                  <span className="text-[11px] font-bold text-primary-600 dark:text-primary-400">{radiusKm}km</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Area Switcher */}
-          <div className="mb-2">
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-              {/* My Local Radar chip */}
-              <button
-                onClick={() => { setActiveWatchedArea(null); setShowAreaSwitcher(false); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-all ${
-                  !activeWatchedArea
-                    ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
-                }`}
-              >
-                <MapPin size={11} />
-                My Local Radar
-              </button>
-
-              {/* Watched area chips */}
-              {watchedAreas.map((area) => (
-                <button
-                  key={area.id}
-                  onClick={() => { setActiveWatchedArea(area); setActiveCategory(null); }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-all ${
-                    activeWatchedArea?.id === area.id
-                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-dashed border-indigo-400/50 dark:border-indigo-600/40'
-                  }`}
-                >
-                  <Star size={10} className={activeWatchedArea?.id === area.id ? 'fill-white text-white' : 'text-indigo-500'} />
-                  {area.name}
-                  {activeWatchedArea?.id === area.id && (
-                    <span className="text-[9px] bg-white/20 px-1 py-0.5 rounded-full">{area.radius_km}km</span>
-                  )}
-                </button>
-              ))}
-
-              {/* Manage / + Watch Area */}
-              <button
-                onClick={() => navigate('/profile')}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50 hover:bg-indigo-100 transition-all"
-              >
-                <Eye size={11} />
-                {watchedAreas.length === 0 ? '+ Follow Area' : 'Manage'}
-              </button>
-            </div>
-          </div>
-
-          {/* Watched Area Active Banner */}
-          {activeWatchedArea && (
-            <div className="mb-2 p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-                  <Eye size={14} className="text-white" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold text-indigo-800 dark:text-indigo-200">
-                    Viewing: {activeWatchedArea.name} • {activeWatchedArea.radius_km}km radius
-                  </p>
-                  {activeWatchedArea.notes && (
-                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 truncate max-w-[220px]">{activeWatchedArea.notes}</p>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveWatchedArea(null)}
-                className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-indigo-900/40 px-2 py-1 rounded-lg whitespace-nowrap shrink-0 hover:bg-indigo-100"
-              >
-                Back to GPS
-              </button>
-            </div>
-          )}
-
-          {/* Category filter tabs — only show when viewing local radar */}
-          {!activeWatchedArea && <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 pt-0.5">
-            <button
-              onClick={() => setActiveCategory(null)}
-              className={`chip px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all ${
-                activeCategory === null
-                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                  : 'bg-gray-100 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              🌟 All Feed
-            </button>
-            {orderedCategories.map((cat) => {
-              const Icon = cat.icon;
-              const isActive = activeCategory === cat.slug;
-              return (
-                <button
-                  key={cat.slug}
-                  onClick={() => setActiveCategory(isActive ? null : cat.slug)}
-                  className={`chip px-3 py-1.5 text-xs font-medium rounded-full flex items-center gap-1.5 transition-all ${
-                    isActive
-                      ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                      : 'bg-gray-100 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  } ${pinnedCategories.includes(cat.slug) && !isActive ? 'ring-1 ring-primary-400/60' : ''}`}
-                >
-                  {pinnedCategories.includes(cat.slug) && <Pin size={10} className="text-primary-500" />}
-                  <Icon size={13} />
-                  <span>{cat.label}</span>
-                </button>
-              );
-            })}
-            <button
-              onClick={() => setShowPinModal(true)}
-              className="chip px-2.5 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800/80 text-gray-500 dark:text-gray-400 hover:bg-gray-200 shrink-0"
-              title="Pin preferred categories"
-            >
-              <Pin size={12} /> Pin
-            </button>
-          </div>}
+          </button>
+          <Link to="/search" className="icon-btn" aria-label="Search">
+            <Search className="h-5 w-5" />
+          </Link>
+          <Link to="/emergency" className="icon-btn text-danger-600" aria-label="Emergency">
+            <Siren className="h-5 w-5" />
+          </Link>
         </div>
       </header>
 
-      {/* Main Feed Content */}
-      <div className="px-4 py-3.5 space-y-3.5">
-        {/* Facebook-style "Create Post / Share with Neighborhood" Card */}
-        <div className="bg-white dark:bg-gray-900 rounded-2xl p-3.5 shadow-sm border border-gray-200/80 dark:border-gray-800 transition-all hover:shadow-md">
-          <div className="flex items-center gap-3 mb-3">
-            <img
-              src={profile?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
-              alt={profile?.display_name || 'You'}
-              className="w-10 h-10 rounded-full object-cover ring-2 ring-primary-500/20 shrink-0"
-            />
-            <button
-              onClick={() => navigate('/create?category=community_feed')}
-              className="flex-1 text-left px-4 py-2.5 bg-gray-100 dark:bg-gray-800/90 hover:bg-gray-200 dark:hover:bg-gray-700/80 text-gray-500 dark:text-gray-400 text-sm rounded-full transition-all cursor-pointer font-normal border border-transparent hover:border-primary-500/20"
-            >
-              What's on your mind? Share with neighbors...
-            </button>
-          </div>
+      <div className="mx-auto grid grid-cols-1 max-w-[1180px] gap-8 px-4 pt-4 lg:grid-cols-[minmax(0,1fr)_330px] lg:px-8 lg:pt-8">
+        <div className="min-w-0">
+          <DemoNotice />
 
-          <div className="flex items-center justify-between pt-2.5 border-t border-gray-100 dark:border-gray-800/80 text-xs">
-            <button
-              onClick={() => navigate('/create?category=community_feed')}
-              className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 px-2 py-1.5 rounded-lg transition-colors font-medium cursor-pointer"
-            >
-              <MessageSquarePlus size={16} />
-              <span>Post</span>
-            </button>
-            <button
-              onClick={() => navigate('/create?category=property_rent')}
-              className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 px-2 py-1.5 rounded-lg transition-colors font-medium cursor-pointer"
-            >
-              <Home size={16} />
-              <span>Rentals</span>
-            </button>
-            <button
-              onClick={() => navigate('/create?category=home_services')}
-              className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 px-2 py-1.5 rounded-lg transition-colors font-medium cursor-pointer"
-            >
-              <Wrench size={16} />
-              <span>Service</span>
-            </button>
-            <button
-              onClick={() => navigate('/create?category=community_poll')}
-              className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 px-2 py-1.5 rounded-lg transition-colors font-medium cursor-pointer"
-            >
-              <Vote size={16} />
-              <span>Poll</span>
-            </button>
-            <button
-              onClick={() => navigate('/create')}
-              className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/80 px-2 py-1.5 rounded-lg transition-colors font-medium cursor-pointer"
-            >
-              <LayoutGrid size={16} />
-              <span>More</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Live Activity Banner */}
-        <div className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs border ${
-          activeWatchedArea
-            ? 'bg-gradient-to-r from-indigo-50/80 to-purple-50/80 dark:from-indigo-950/30 dark:to-purple-950/30 border-indigo-100/60 dark:border-indigo-900/40'
-            : 'bg-gradient-to-r from-primary-50/80 to-indigo-50/80 dark:from-primary-950/30 dark:to-indigo-950/30 border-primary-100/60 dark:border-primary-900/40'
-        }`}>
-          <div className={`flex items-center gap-2 font-medium ${
-            activeWatchedArea ? 'text-indigo-700 dark:text-indigo-300' : 'text-primary-700 dark:text-primary-300'
-          }`}>
-            <Sparkles size={14} className={`animate-bounce ${activeWatchedArea ? 'text-indigo-600' : 'text-primary-600'}`} />
-            {activeWatchedArea ? (
-              <span>Watching <strong>{activeWatchedArea.name}</strong> • {activeWatchedArea.radius_km} km radius</span>
-            ) : (
-              <span>Showing posts within <strong>{radiusKm} km</strong> of your location</span>
-            )}
-          </div>
-          <span className={`font-semibold bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full shadow-2xs ${
-            activeWatchedArea ? 'text-indigo-600 dark:text-indigo-400' : 'text-primary-600 dark:text-primary-400'
-          }`}>
-            {posts.length} posts
-          </span>
-        </div>
-
-        {/* Radius Nudge if feed is nearly empty and radius < 5km */}
-        {!loading && posts.length <= 1 && radiusKm < 10 && (
-          <div className="bg-gradient-to-r from-primary-50 to-indigo-50 dark:from-primary-950/50 dark:to-indigo-950/50 p-3.5 rounded-2xl border border-primary-200/60 dark:border-primary-800/50 flex items-center justify-between gap-3 text-xs animate-fade-in">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-primary-600 text-white flex items-center justify-center shrink-0">
-                <Radar size={16} />
+          {/* Hero */}
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-600 via-primary-700 to-[#131a4a] p-5 text-white shadow-lift lg:p-7">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-radar-400/20 blur-3xl" />
+            <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:16px_16px]" />
+            <div className="relative flex items-start gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-white/70">
+                  {greeting()}
+                  {firstName ? `, ${firstName}` : ''} 👋
+                </p>
+                <h1 className="mt-1 text-[22px] font-extrabold leading-tight tracking-tight text-balance lg:text-[30px]">
+                  {loading ? 'Scanning your neighbourhood…' : stats.active ? `${stats.active} things happening near you` : 'It’s quiet around here'}
+                </h1>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setAreaOpen(true)}
+                    className="hidden h-9 max-w-full items-center gap-1.5 rounded-full bg-white/15 px-3.5 text-[13px] font-semibold backdrop-blur hover:bg-white/25 lg:inline-flex"
+                  >
+                    <MapPin className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{radar.areaLabel}</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 opacity-70" />
+                  </button>
+                  <button onClick={() => setRadiusOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-3.5 text-[13px] font-semibold backdrop-blur hover:bg-white/25">
+                    <Radar className="h-4 w-4" /> {radar.radiusKm} km radius
+                  </button>
+                  {radar.gpsStatus !== 'granted' && radar.area.kind === 'gps' && (
+                    <button onClick={radar.requestLocation} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-bold text-primary-700 hover:bg-white/90">
+                      <LocateFixed className="h-4 w-4" /> {radar.gpsStatus === 'locating' ? 'Locating…' : 'Use my location'}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="font-bold text-gray-900 dark:text-gray-100">Need more neighborhood posts?</p>
-                <p className="text-gray-500 dark:text-gray-400">Expand your radar to 10km to view the full sector.</p>
+              <div className="shrink-0 text-white lg:hidden">
+                <RadarScope center={radar.coords} radiusKm={radar.radiusKm} posts={inRadius} size={104} />
               </div>
             </div>
-            <button
-              onClick={() => setRadiusKm(10)}
-              className="px-3 py-1.5 rounded-xl bg-primary-600 text-white font-semibold shrink-0 hover:bg-primary-700 active:scale-95 transition-transform shadow-xs cursor-pointer"
-            >
-              Expand 10km
-            </button>
-          </div>
-        )}
+            <div className="relative mt-5 grid grid-cols-4 gap-2 lg:gap-3">
+              <HeroStat icon={Radar} label="Active" value={stats.active} loading={loading} />
+              <HeroStat icon={Siren} label="Urgent" value={stats.urgent} loading={loading} accent={stats.urgent > 0} />
+              <HeroStat icon={Clock} label="Today" value={stats.today} loading={loading} />
+              <HeroStat icon={CalendarDays} label="Events" value={stats.events} loading={loading} />
+            </div>
+          </section>
 
-        {/* Posts List */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3">
-            <Spinner size={36} />
-            <p className="text-xs text-gray-400 font-medium animate-pulse">Scanning neighborhood radar...</p>
-          </div>
-        ) : posts.length === 0 ? (
-          <EmptyState
-            icon={<Radar size={32} />}
-            title="No posts yet in this area"
-            message={
-              activeCategory
-                ? `No ${CATEGORY_MAP[activeCategory]?.label ?? 'posts'} within ${radiusKm} km. Be the first to share something with your neighborhood!`
-                : `Nothing nearby yet within ${radiusKm} km — be the first to post!`
-            }
-          />
-        ) : (
-          posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              userCoords={coords as Coords | null}
-              onBookmark={handleBookmark}
-              onVote={handleVote}
-            />
-          ))
-        )}
+          {/* Urgent strip */}
+          {urgent.length > 0 && (
+            <section className="mt-6">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-[17px] font-bold tracking-tight text-ink">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger-500 opacity-60" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-danger-500" />
+                  </span>
+                  Urgent near you
+                </h2>
+                <Link to="/emergency" className="text-[13px] font-semibold text-primary-600">
+                  Emergency help
+                </Link>
+              </div>
+              <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 no-scrollbar lg:mx-0 lg:px-0">
+                {urgent.map((p) => (
+                  <UrgentCard key={p.id} post={p} />
+                ))}
+              </div>
+            </section>
+          )}
 
-        {/* Floating Action Buttons */}
-        <button
-          onClick={() => navigate('/create')}
-          className="fixed bottom-20 right-5 z-40 w-13 h-13 rounded-2xl bg-gradient-to-tr from-primary-600 to-indigo-600 text-white shadow-xl shadow-primary-600/40 flex items-center justify-center hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-white/20"
-          title="Create New Post"
-        >
-          <Plus size={24} strokeWidth={2.5} />
-        </button>
+          {!category && (
+            <div className="mt-6 lg:hidden">
+              <ProvidersSection />
+            </div>
+          )}
 
-        {/* Quick Urgent Report Widget Button */}
-        <button
-          onClick={() => setShowQuickWidget(true)}
-          className="fixed bottom-20 left-5 z-40 flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-gradient-to-tr from-red-600 to-orange-500 text-white shadow-xl shadow-red-600/40 hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-white/20 text-xs font-bold"
-          title="Quick urgent report"
-        >
-          <Siren size={15} />
-          <span>SOS / Alert</span>
-        </button>
-      </div>
-
-      {/* Quick Post Widget Overlay */}
-      {showQuickWidget && (
-        <QuickPostWidget
-          onClose={() => setShowQuickWidget(false)}
-          onPosted={() => {
-            showToast('⚡ Urgent alert posted! Neighbors notified.');
-          }}
-        />
-      )}
-
-      {/* Radius Modal */}
-      <Modal
-        open={showRadiusModal}
-        onClose={() => setShowRadiusModal(false)}
-        title="Neighborhood Radar Radius"
-        footer={
-          <button onClick={() => setShowRadiusModal(false)} className="btn-primary w-full py-2.5">
-            Apply Radius ({radiusKm} km)
-          </button>
-        }
-      >
-        <div className="space-y-4 py-2">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Adjust how far your radar scans for neighborhood posts, listings, and services:
-          </p>
-          <div className="flex items-center justify-between text-2xl font-bold text-primary-600">
-            <span>{radiusKm} km</span>
-            <span className="text-xs font-normal text-gray-400">Up to {(radiusKm * 1000).toLocaleString()} meters</span>
-          </div>
-          <input
-            type="range"
-            min="1"
-            max="10"
-            step="1"
-            value={radiusKm}
-            onChange={(e) => {
-              const km = Number(e.target.value);
-              setRadiusKm(km);
-            }}
-            className="w-full accent-primary-600 cursor-pointer h-2 bg-gray-200 dark:bg-gray-700 rounded-lg"
-          />
-          <div className="flex justify-between text-xs text-gray-400 font-medium">
-            <span>1 km (Immediate block)</span>
-            <span>5 km (Sector)</span>
-            <span>10 km (Wide Area)</span>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Pin Categories Modal */}
-      <PinCategoriesModal
-        open={showPinModal}
-        onClose={() => setShowPinModal(false)}
-        pinned={pinnedCategories}
-        onToast={showToast}
-      />
-
-      <Toast message={toast.msg} show={toast.show} />
-    </div>
-  );
-}
-
-function PinCategoriesModal({
-  open,
-  onClose,
-  pinned,
-  onToast,
-}: {
-  open: boolean;
-  onClose: () => void;
-  pinned: string[];
-  onToast: (msg: string) => void;
-}) {
-  const { session, updateProfile } = useAuth();
-  const [selected, setSelected] = useState<string[]>(pinned);
-
-  useEffect(() => {
-    setSelected(pinned);
-  }, [pinned, open]);
-
-  function toggle(slug: string) {
-    setSelected((prev) => {
-      if (prev.includes(slug)) return prev.filter((s) => s !== slug);
-      if (prev.length >= 4) return prev;
-      return [...prev, slug];
-    });
-  }
-
-  async function handleSave() {
-    await updateProfile({ pinned_categories: selected });
-    onToast('Pinned categories updated');
-    onClose();
-  }
-
-  const grouped = CATEGORIES.reduce((acc, cat) => {
-    if (!acc[cat.group]) acc[cat.group] = [];
-    acc[cat.group].push(cat);
-    return acc;
-  }, {} as Record<string, CategoryConfig[]>);
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Pin Top Categories"
-      footer={
-        <button onClick={handleSave} className="btn-primary w-full py-2.5">
-          Save Preferences ({selected.length}/4)
-        </button>
-      }
-    >
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Pin up to 4 categories to appear first in your top radar navigation bar.
-      </p>
-      <div className="space-y-4">
-        {Object.entries(grouped).map(([group, cats]) => (
-          <div key={group}>
-            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-              {GROUP_LABELS[group as keyof typeof GROUP_LABELS] ?? group}
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {cats.map((cat) => {
-                const isPinned = selected.includes(cat.slug);
-                const disabled = !isPinned && selected.length >= 4;
-                const Icon = cat.icon;
+          {/* Filters */}
+          <section className="sticky top-14 z-20 -mx-4 mt-6 bg-bg/90 px-4 py-2 backdrop-blur-xl lg:top-0 lg:mx-0 lg:px-0">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+              <button onClick={() => setCategory(null)} className={!category ? 'chip-on' : 'chip-off'}>
+                All <span className="opacity-60">{inRadius.length}</span>
+              </button>
+              {chipOrder.map(({ c, n }) => {
+                const active = category === c.slug;
                 return (
-                  <button
-                    key={cat.slug}
-                    onClick={() => toggle(cat.slug)}
-                    disabled={disabled}
-                    className={`chip px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all ${
-                      isPinned ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                    } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-                  >
-                    {isPinned && <Pin size={10} />}
-                    <Icon size={12} />
-                    <span>{cat.label}</span>
+                  <button key={c.slug} onClick={() => setCategory(active ? null : c.slug)} className={active ? 'chip-on' : 'chip-off'}>
+                    <c.icon className="h-4 w-4" style={active ? undefined : { color: c.color }} />
+                    {c.short}
+                    {n > 0 && <span className="opacity-60">{n}</span>}
                   </button>
                 );
               })}
             </div>
+          </section>
+
+          <div className="mb-3 mt-3 flex items-center justify-between gap-3">
+            <p className="text-sm text-ink-2">
+              {loading ? (
+                'Loading…'
+              ) : (
+                <>
+                  <b className="text-ink">{feed.length}</b> {category ? getCategory(category).label.toLowerCase() : 'posts'} within {radar.radiusKm} km
+                </>
+              )}
+            </p>
+            <Segmented
+              size="sm"
+              value={sort}
+              onChange={setSort}
+              options={[
+                { value: 'latest', label: 'Latest', icon: Sparkles },
+                { value: 'nearest', label: 'Nearest', icon: Navigation },
+                { value: 'top', label: 'Top', icon: Flame },
+              ]}
+            />
           </div>
+
+          {error ? (
+            <ErrorState message={error} onRetry={refetch} />
+          ) : loading ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <PostCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : feed.length === 0 ? (
+            <EmptyState
+              icon={Radar}
+              title={category ? `No ${getCategory(category).short.toLowerCase()} posts nearby` : 'Nothing on your radar yet'}
+              body={
+                radar.radiusKm < MAX_RADIUS
+                  ? `Try widening your radius, or be the first to post something within ${radar.radiusKm} km.`
+                  : 'Be the first to share something with your neighbourhood.'
+              }
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  {radar.radiusKm < MAX_RADIUS && (
+                    <button className="btn-outline" onClick={() => radar.setRadiusKm(MAX_RADIUS)}>
+                      Scan {MAX_RADIUS} km
+                    </button>
+                  )}
+                  <button className="btn-primary" onClick={() => navigate(category ? `/create?category=${category}` : '/create')}>
+                    <Plus className="h-4 w-4" /> Create a post
+                  </button>
+                </div>
+              }
+            />
+          ) : (
+            <div className="space-y-3">
+              {feed.map((p) => (
+                <PostCard key={p.id} post={p} onChange={updatePost} />
+              ))}
+              <p className="py-6 text-center text-xs font-medium text-ink-3">You’re all caught up within {radar.radiusKm} km ✨</p>
+            </div>
+          )}
+        </div>
+
+        {/* Right rail */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-8 space-y-5">
+            <div className="card p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-ink">Live radar</h3>
+                <button onClick={() => setRadiusOpen(true)} className="text-[13px] font-semibold text-primary-600">
+                  Adjust
+                </button>
+              </div>
+              <div className="mt-4 flex justify-center text-ink">
+                <RadarScope center={radar.coords} radiusKm={radar.radiusKm} posts={inRadius} size={240} onBlipClick={(p) => navigate(`/post/${p.id}`)} />
+              </div>
+              <Link to="/map" className="btn-secondary mt-4 w-full">
+                Open live map <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <CategoryBreakdown posts={inRadius} onPick={setCategory} active={category} />
+            <ProvidersCard />
+            <EmergencyCard />
+            <TrendingCard posts={inRadius} />
+          </div>
+        </aside>
+      </div>
+
+      <AreaSheet open={areaOpen} onClose={() => setAreaOpen(false)} />
+      <RadiusSheet open={radiusOpen} onClose={() => setRadiusOpen(false)} countFor={countFor} />
+    </div>
+  );
+}
+
+function HeroStat({ icon: Icon, label, value, loading, accent }: { icon: typeof Radar; label: string; value: number; loading?: boolean; accent?: boolean }) {
+  return (
+    <div className={cn('rounded-2xl bg-white/10 p-2.5 backdrop-blur lg:p-3.5', accent && 'bg-danger-500/30 ring-1 ring-white/20')}>
+      <Icon className="h-4 w-4 text-white/70" />
+      <p className="mt-1.5 text-xl font-extrabold tabular-nums leading-none lg:text-2xl">{loading ? '–' : value}</p>
+      <p className="mt-1 text-[11px] font-medium text-white/70 lg:text-xs">{label}</p>
+    </div>
+  );
+}
+
+function UrgentCard({ post }: { post: PostWithRelations }) {
+  const cat = getCategory(post.category);
+  const headline = headlineValue(post.category, post.metadata);
+  return (
+    <Link
+      to={`/post/${post.id}`}
+      className="card w-[260px] shrink-0 snap-start overflow-hidden p-3.5 transition hover:shadow-lift"
+      style={{ borderTop: `3px solid ${cat.color}` }}
+    >
+      <div className="flex items-center gap-2.5">
+        <CategoryIcon slug={post.category} size={36} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: cat.color }}>
+            {cat.short}
+            {headline ? ` · ${headline}` : ''}
+          </p>
+          <p className="text-xs text-ink-3">
+            {timeAgo(post.created_at)} · {formatDistance(post.distance_km)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-2.5 line-clamp-2 text-[14px] font-semibold leading-snug text-ink">{post.title}</p>
+      {cat.supportsConfirm && (
+        <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-ink-2">
+          <AlertTriangle className="h-3.5 w-3.5" style={{ color: cat.color }} /> {post.confirm_count} neighbours confirmed
+        </p>
+      )}
+    </Link>
+  );
+}
+
+function CategoryBreakdown({ posts, onPick, active }: { posts: PostWithRelations[]; onPick(s: string | null): void; active: string | null }) {
+  const rows = useMemo(() => {
+    const m = new Map<string, number>();
+    posts.forEach((p) => m.set(p.category, (m.get(p.category) ?? 0) + 1));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [posts]);
+  const max = Math.max(1, ...rows.map((r) => r[1]));
+  if (!rows.length) return null;
+  return (
+    <div className="card p-5">
+      <h3 className="flex items-center gap-2 font-bold text-ink">
+        <TrendingUp className="h-4 w-4 text-primary-600" /> What’s active nearby
+      </h3>
+      <div className="mt-4 space-y-3">
+        {rows.map(([slug, n]) => {
+          const c = getCategory(slug);
+          return (
+            <button key={slug} onClick={() => onPick(active === slug ? null : slug)} className="group block w-full text-left">
+              <div className="mb-1 flex items-center justify-between text-[13px]">
+                <span className={cn('flex items-center gap-2 font-semibold', active === slug ? 'text-primary-600' : 'text-ink-2 group-hover:text-ink')}>
+                  <c.icon className="h-4 w-4" style={{ color: c.color }} /> {c.short}
+                </span>
+                <span className="font-bold tabular-nums text-ink">{n}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div className="h-full rounded-full transition-all" style={{ width: `${(n / max) * 100}%`, background: c.color }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const QUICK_DIAL = [
+  { name: 'Rescue', phone: '1122' },
+  { name: 'Police', phone: '15' },
+  { name: 'Edhi', phone: '115' },
+  { name: 'Fire', phone: '16' },
+];
+
+function EmergencyCard() {
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex items-center justify-between bg-danger-600 px-5 py-3 text-white">
+        <h3 className="flex items-center gap-2 font-bold">
+          <Siren className="h-4 w-4" /> Emergency
+        </h3>
+        <Link to="/emergency" className="text-xs font-semibold text-white/85 hover:text-white">
+          SOS & contacts →
+        </Link>
+      </div>
+      <div className="grid grid-cols-4 gap-2 p-3">
+        {QUICK_DIAL.map((e) => (
+          <a key={e.phone} href={telLink(e.phone)} className="flex flex-col items-center rounded-xl p-2 text-center transition hover:bg-surface-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-danger-50 text-danger-600 dark:bg-danger-500/15">
+              <Phone className="h-4 w-4" />
+            </span>
+            <span className="mt-1 text-[15px] font-extrabold text-ink">{e.phone}</span>
+            <span className="text-[11px] text-ink-3">{e.name}</span>
+          </a>
         ))}
       </div>
-    </Modal>
+    </div>
+  );
+}
+
+function TrendingCard({ posts }: { posts: PostWithRelations[] }) {
+  const top = useMemo(
+    () => [...posts].sort((a, b) => b.upvotes - b.downvotes + (b.comment_count ?? 0) - (a.upvotes - a.downvotes + (a.comment_count ?? 0))).slice(0, 4),
+    [posts]
+  );
+  if (!top.length) return null;
+  return (
+    <div className="card p-5">
+      <h3 className="flex items-center gap-2 font-bold text-ink">
+        <Flame className="h-4 w-4 text-orange-500" /> Trending
+      </h3>
+      <ol className="mt-3 space-y-1">
+        {top.map((p, i) => (
+          <li key={p.id}>
+            <Link to={`/post/${p.id}`} className="-mx-2 flex items-start gap-3 rounded-xl p-2 hover:bg-surface-2">
+              <span className="mt-0.5 w-4 text-sm font-extrabold text-ink-3">{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-ink">{p.title}</p>
+                <p className="mt-0.5 text-[11px] text-ink-3">
+                  {getCategory(p.category).short} · {p.upvotes - p.downvotes} votes · {p.comment_count ?? 0} replies
+                </p>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 flex items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-2 text-xs text-ink-2">
+        <ShieldCheck className="h-4 w-4 shrink-0 text-success-600" /> Posts with 3+ reports are hidden automatically.
+      </p>
+    </div>
+  );
+}
+
+function DemoNotice() {
+  const { demoReason } = useBackend();
+  const [dismissed, setDismissed] = useLocalStorage('sr_demo_notice_dismissed', false);
+  if (!demoReason || dismissed) return null;
+  const why =
+    demoReason === 'unreachable'
+      ? 'Your Supabase project couldn’t be reached, so Smart Radar is running on sample data.'
+      : demoReason === 'forced'
+        ? 'Demo mode is switched on (VITE_DATA_MODE=demo).'
+        : 'Supabase isn’t configured yet, so Smart Radar is running on sample data.';
+  return (
+    <div className="mb-4 flex items-start gap-3 rounded-2xl border border-warning-500/30 bg-warning-50 p-3.5 text-[13px] text-warning-700 dark:bg-warning-500/10 dark:text-warning-500">
+      <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+      <p className="flex-1">
+        <b>Demo mode.</b> <span className="hidden sm:inline">{why} </span>Everything works and is saved in this browser. Sign in with any number
+        using code <b>123456</b>.
+      </p>
+      <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="-m-1 rounded-lg p-1 hover:bg-warning-500/10">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
   );
 }

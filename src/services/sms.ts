@@ -1,107 +1,32 @@
 /**
  * src/services/sms.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * SMS / OTP service — consistent import path for the rest of the app.
+ * OTP sign-in lives in the data layer (src/data/*) — Supabase phone auth in
+ * live mode, a local simulator in demo mode.
  *
- * STRATEGY:
- *  • Supabase's built-in phone auth is the PRIMARY OTP method.
- *    It is always available if VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
- *    are set — no extra credentials needed.
+ * This file covers CUSTOM SMS (branded alerts, e.g. blood requests to trusted
+ * contacts). It calls the `send-sms` Supabase Edge Function, which holds the
+ * Twilio credentials server-side:
  *
- *  • Twilio is the FALLBACK for custom SMS flows (e.g., branded messages,
- *    non-OTP campaigns) and only activates when the VITE_TWILIO_* keys are set.
- *    NOTE: Twilio secrets must NEVER be called directly from the browser.
- *    The functions below call YOUR backend / Supabase Edge Function, which
- *    holds the real credentials server-side.
+ *   supabase secrets set TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_PHONE_NUMBER=...
+ *   supabase functions deploy send-sms
  *
- * Usage:
- *   import { sendOtp, verifyOtp, isTwilioConfigured } from '@/services/sms';
+ * then set VITE_ENABLE_CUSTOM_SMS=true. Twilio secrets must never be VITE_ vars.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-
-import { supabase } from '@/lib/supabase';
 import { ENV } from '@/config/env';
+import { getSupabase } from '@/lib/supabase';
 
-// ── Supabase phone-auth re-exports (primary path) ─────────────────────────────
-
-/**
- * Send an OTP to a phone number using Supabase's built-in phone auth.
- * @param phone  E.164 format, e.g. "+923001234567"
- */
-export async function sendOtp(phone: string): Promise<{ error: Error | null }> {
-  const { error } = await supabase.auth.signInWithOtp({ phone });
-  return { error: error as Error | null };
+export function isCustomSmsEnabled(): boolean {
+  return ENV.features.customSms && Boolean(getSupabase());
 }
 
-/**
- * Verify the OTP that was sent via sendOtp().
- * @param phone  E.164 format, e.g. "+923001234567"
- * @param token  6-digit OTP received by the user
- */
-export async function verifyOtp(
-  phone: string,
-  token: string
-): Promise<{ data: unknown; error: Error | null }> {
-  const { data, error } = await supabase.auth.verifyOtp({
-    phone,
-    token,
-    type: 'sms',
-  });
-  return { data, error: error as Error | null };
-}
-
-/**
- * Sign out the current user via Supabase auth.
- */
-export async function signOut(): Promise<{ error: Error | null }> {
-  const { error } = await supabase.auth.signOut();
-  return { error: error as Error | null };
-}
-
-/**
- * Get the current Supabase auth session.
- */
-export async function getSession() {
-  return supabase.auth.getSession();
-}
-
-// ── Twilio custom SMS (secondary / server-side proxy) ─────────────────────────
-
-/** True if Twilio env vars are configured (enables custom SMS flows). */
-export function isTwilioConfigured(): boolean {
-  return !!(ENV.twilio.accountSid && ENV.twilio.authToken && ENV.twilio.phoneNumber);
-}
-
-/**
- * Send a custom branded SMS via your backend Supabase Edge Function.
- *
- * ⚠️  NEVER send Twilio credentials from the browser.
- *     This function calls a server-side Edge Function (e.g., `send-sms`)
- *     that proxies the request to Twilio using server-stored secrets.
- *
- * @param to       Destination phone in E.164 format
- * @param message  The SMS body text
- */
-export async function sendCustomSms(
-  to: string,
-  message: string
-): Promise<{ success: boolean; error: string | null }> {
-  if (!isTwilioConfigured()) {
-    console.warn(
-      '[Smart Radar / sms] Twilio is not configured. ' +
-      'Add VITE_TWILIO_* keys to .env and deploy the `send-sms` Edge Function.'
-    );
-    return { success: false, error: 'Twilio not configured' };
+export async function sendCustomSms(to: string, message: string): Promise<{ success: boolean; error: string | null }> {
+  const supabase = getSupabase();
+  if (!isCustomSmsEnabled() || !supabase) {
+    return { success: false, error: 'Custom SMS is not enabled.' };
   }
-
-  const { data, error } = await supabase.functions.invoke('send-sms', {
-    body: { to, message },
-  });
-
-  if (error) {
-    console.error('[Smart Radar / sms] Edge Function error:', error);
-    return { success: false, error: error.message };
-  }
-
-  return { success: true, error: null, ...data };
+  const { error } = await supabase.functions.invoke('send-sms', { body: { to, message } });
+  if (error) return { success: false, error: error.message };
+  return { success: true, error: null };
 }

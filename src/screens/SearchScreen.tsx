@@ -1,238 +1,187 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search as SearchIcon, X, Filter } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { useCallback, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Clock, Search, SearchX, X } from 'lucide-react';
+import { PageBody, PageHeader } from '@/components/layout/Page';
+import { PostCard } from '@/components/post/PostCard';
+import { ProvidersSection } from '@/components/Providers';
+import { CategoryIcon, EmptyState, ErrorState, PostCardSkeleton, Segmented } from '@/components/ui';
+import { useApi } from '@/data';
+import { finalizeFeed } from '@/data/feed';
 import { useAuth } from '@/lib/auth';
-import { useLocation } from '@/lib/location-context';
-import { CATEGORIES, CATEGORY_MAP, type CategoryConfig } from '@/lib/categories';
-import type { PostWithRelations } from '@/lib/types';
-import { haversineKm, type Coords } from '@/lib/location';
-import { getStoredLocalPosts } from '@/lib/dummy-data';
-import { PostCard } from '@/components/PostCard';
-import { EmptyState, Spinner } from '@/components/ui';
+import { useDebounced, useLocalStorage, useQuery } from '@/lib/hooks';
+import { useRadar } from '@/lib/location-context';
+import { categoriesByGroup, getCategory } from '@/lib/categories';
+import { cn } from '@/lib/format';
+import type { FeedSort, PostWithRelations } from '@/lib/types';
+
+const SUGGESTIONS = ['AC repair', '2 bed flat', 'B+ blood', 'Maths tutor', 'iPhone', 'Carpool', 'Electrician', 'Discount'];
 
 export function SearchScreen() {
-  const navigate = useNavigate();
-  const { session } = useAuth();
-  const { coords, radiusKm } = useLocation();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<PostWithRelations[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
+  const api = useApi();
+  const { user } = useAuth();
+  const radar = useRadar();
+  const [params, setParams] = useSearchParams();
+  const [q, setQ] = useState(params.get('q') ?? '');
+  const dq = useDebounced(q, 250);
+  const [category, setCategory] = useState<string | null>(params.get('category'));
+  const [radius, setRadius] = useState(5);
+  const [sort, setSort] = useState<FeedSort>('nearest');
+  const [recent, setRecent] = useLocalStorage<string[]>('sr_recent_searches', []);
 
-  const doSearch = useCallback(async () => {
-    if (!query.trim() && selectedCategories.length === 0) {
-      setResults([]);
-      setSearched(false);
-      return;
-    }
-    setLoading(true);
-    setSearched(true);
+  const { data, loading, error, refetch, setData } = useQuery(
+    () => api.listPosts({ center: radar.coords, radiusKm: 5, sort: 'latest' }, user?.id),
+    [api, radar.coords.lat, radar.coords.lng, user?.id],
+    { scopes: ['posts', 'bookmarks'] }
+  );
 
-    let dbQuery = supabase
-      .from('posts')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
+  const active = dq.trim().length > 0 || Boolean(category);
+  const results = useMemo(
+    () => (active ? finalizeFeed(data ?? [], { center: radar.coords, radiusKm: radius, category, search: dq, sort }) : []),
+    [active, data, radar.coords, radius, category, dq, sort]
+  );
 
-    if (query.trim()) {
-      dbQuery = dbQuery.or(`title.ilike.%${query.trim()}%,description.ilike.%${query.trim()}%`);
-    }
+  const commit = (term: string) => {
+    const t = term.trim();
+    setQ(t);
+    const next = new URLSearchParams(params);
+    if (t) next.set('q', t);
+    else next.delete('q');
+    setParams(next, { replace: true });
+    if (t) setRecent([t, ...recent.filter((r) => r.toLowerCase() !== t.toLowerCase())].slice(0, 6));
+  };
 
-    let rawData: any[] = [];
-    try {
-      const { data, error } = await dbQuery;
-      if (!error && data) {
-        rawData = data;
-      }
-    } catch {
-      // Fallback
-    }
-
-    const localList = getStoredLocalPosts();
-    const allCombined = [...localList, ...rawData];
-
-    // Deduplicate by ID and exclude future scheduled posts
-    const seenIds = new Set<string>();
-    const uniquePosts: PostWithRelations[] = [];
-    const now = Date.now();
-    for (const p of allCombined) {
-      const isFuture = p.scheduled_for && new Date(p.scheduled_for).getTime() > now;
-      if (!seenIds.has(p.id) && !isFuture) {
-        seenIds.add(p.id);
-        uniquePosts.push(p);
-      }
-    }
-
-    // Filter by query string
-    let filtered = uniquePosts;
-    if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      filtered = filtered.filter((p) => {
-        const tMatch = p.title?.toLowerCase().includes(q);
-        const dMatch = p.description?.toLowerCase().includes(q);
-        const catMatch = p.category?.toLowerCase().includes(q);
-        const locMatch = p.location_label?.toLowerCase().includes(q);
-        return tMatch || dMatch || catMatch || locMatch;
-      });
-    }
-
-    // Filter by category
-    if (selectedCategories.length > 0) {
-      filtered = filtered.filter((p) => selectedCategories.includes(p.category));
-    }
-
-    // Filter by radius
-    if (coords) {
-      filtered = filtered.filter((p) => {
-        const dist = haversineKm(coords, { lat: p.lat, lng: p.lng });
-        const catRadius = CATEGORY_MAP[p.category]?.defaultRadiusKm ?? radiusKm;
-        return dist <= Math.min(catRadius, radiusKm);
-      });
-    }
-
-    // Fetch author profiles
-    const userIds = [...new Set(filtered.map((p) => p.user_id).filter((uid) => uid && !uid.startsWith('user-')))];
-    let profileMap = new Map<string, any>();
-    if (userIds.length > 0) {
-      try {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, display_name, avatar_url')
-          .in('id', userIds);
-        profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
-      } catch {}
-    }
-
-    // Fetch bookmarks
-    let bookmarkSet = new Set<string>();
-    if (session?.user) {
-      try {
-        const { data: bookmarks } = await supabase
-          .from('bookmarks')
-          .select('post_id')
-          .eq('user_id', session.user.id);
-        bookmarkSet = new Set((bookmarks ?? []).map((b) => b.post_id));
-      } catch {}
-    }
-
-    const enriched = filtered.map((p) => ({
-      ...p,
-      author_name: p.author_name ?? profileMap.get(p.user_id)?.display_name ?? 'Community Member',
-      author_avatar: p.author_avatar ?? profileMap.get(p.user_id)?.avatar_url ?? null,
-      is_bookmarked: p.is_bookmarked ?? bookmarkSet.has(p.id),
-    }));
-
-    setResults(enriched);
-    setLoading(false);
-  }, [query, selectedCategories, coords, radiusKm, session?.user]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (query.trim() || selectedCategories.length > 0) {
-        doSearch();
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query, selectedCategories, doSearch]);
-
-  function toggleCategory(slug: string) {
-    setSelectedCategories((prev) =>
-      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
-    );
-  }
-
-  const grouped = CATEGORIES.reduce((acc, cat) => {
-    if (!acc[cat.group]) acc[cat.group] = [];
-    acc[cat.group].push(cat);
-    return acc;
-  }, {} as Record<string, CategoryConfig[]>);
+  const onChange = useCallback((p: PostWithRelations) => setData((l) => (l ?? []).map((x) => (x.id === p.id ? p : x))), [setData]);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-20">
-      {/* Header */}
-      <div className="sticky top-0 z-30 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-b border-gray-100 dark:border-gray-800">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-2">
-            <button onClick={() => navigate(-1)} className="btn-ghost p-2 -ml-2 rounded-full">
-              <SearchIcon size={20} className="text-gray-400" />
+    <>
+      <PageHeader title="Explore" subtitle="Search everything within 5 km — jobs, rentals, services, deals and more." />
+      <PageBody>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            commit(q);
+          }}
+          className="relative"
+        >
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-3" />
+          <input
+            type="search"
+            autoFocus={window.matchMedia('(min-width: 1024px)').matches}
+            enterKeyHint="search"
+            className="input h-14 rounded-2xl pl-12 pr-12 text-base shadow-card"
+            placeholder="Search posts, places, services…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onBlur={() => q.trim() && commit(q)}
+          />
+          {q && (
+            <button type="button" onClick={() => commit('')} className="icon-btn absolute right-2 top-1/2 h-9 w-9 -translate-y-1/2" aria-label="Clear search">
+              <X className="h-4 w-4" />
             </button>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search posts... e.g. electrician, 2 bedroom flat"
-              className="flex-1 bg-transparent text-sm focus:outline-none placeholder-gray-400"
-              autoFocus
-            />
-            {query && (
-              <button onClick={() => setQuery('')} className="btn-ghost p-1.5 rounded-full">
-                <X size={16} />
-              </button>
-            )}
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`btn-ghost p-2 rounded-full ${selectedCategories.length > 0 ? 'text-primary-600' : ''}`}
-            >
-              <Filter size={18} />
-            </button>
-          </div>
+          )}
+        </form>
 
-          {showFilters && (
-            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 animate-fade-in">
-              <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Filter by category</p>
-              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-                {Object.entries(grouped).map(([group, cats]) =>
-                  cats.map((cat) => (
-                    <button
-                      key={cat.slug}
-                      onClick={() => toggleCategory(cat.slug)}
-                      className={`chip ${selectedCategories.includes(cat.slug) ? 'chip-active' : 'chip-inactive'} text-xs`}
-                    >
-                      <cat.icon size={10} />
-                      {cat.label}
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Segmented
+            size="sm"
+            value={String(radius) as '1' | '2' | '3' | '4' | '5'}
+            onChange={(v) => setRadius(Number(v))}
+            options={['1', '2', '3', '4', '5'].map((k) => ({ value: k as '1', label: `${k} km` }))}
+          />
+          <Segmented
+            size="sm"
+            value={sort}
+            onChange={setSort}
+            options={[
+              { value: 'nearest', label: 'Nearest' },
+              { value: 'latest', label: 'Latest' },
+              { value: 'top', label: 'Top' },
+            ]}
+          />
+          {category && (
+            <button onClick={() => setCategory(null)} className="chip-on">
+              {getCategory(category).short} <X className="h-3.5 w-3.5" />
+            </button>
           )}
         </div>
-      </div>
 
-      {/* Results */}
-      <div className="px-4 py-3 space-y-3">
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Spinner size={32} />
+        {!active ? (
+          <div className="mt-8 space-y-8">
+            {recent.length > 0 && (
+              <section>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="eyebrow">Recent</p>
+                  <button className="text-xs font-semibold text-ink-3 hover:text-ink" onClick={() => setRecent([])}>
+                    Clear
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {recent.map((r) => (
+                    <button key={r} onClick={() => commit(r)} className="chip-off">
+                      <Clock className="h-3.5 w-3.5" /> {r}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            <ProvidersSection layout="grid" title="Verified businesses near you" />
+            <section>
+              <p className="eyebrow mb-3">Popular nearby</p>
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTIONS.map((s) => (
+                  <button key={s} onClick={() => commit(s)} className="chip-off">
+                    <Search className="h-3.5 w-3.5" /> {s}
+                  </button>
+                ))}
+              </div>
+            </section>
+            {categoriesByGroup().map((g) => (
+              <section key={g.group}>
+                <p className="eyebrow mb-3">{g.label}</p>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {g.items.map((c) => {
+                    const n = (data ?? []).filter((p) => p.category === c.slug).length;
+                    return (
+                      <button key={c.slug} onClick={() => setCategory(c.slug)} className="card flex items-center gap-3 p-3 text-left transition hover:shadow-lift">
+                        <CategoryIcon slug={c.slug} size={42} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-ink">{c.label}</p>
+                          <p className="truncate text-xs text-ink-3">{c.description}</p>
+                        </div>
+                        <span className={cn('rounded-full px-2 py-0.5 text-xs font-bold', n ? 'bg-primary-600/10 text-primary-600' : 'text-ink-3')}>{n}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
-        ) : !searched ? (
-          <EmptyState
-            icon={<SearchIcon size={28} />}
-            title="Search nearby posts"
-            message={'Find posts by keyword — try "electrician", "flat", "blood", or anything else.'}
-          />
+        ) : error ? (
+          <ErrorState message={error} onRetry={refetch} />
+        ) : loading ? (
+          <div className="mt-6 space-y-3">
+            <PostCardSkeleton />
+            <PostCardSkeleton />
+          </div>
         ) : results.length === 0 ? (
           <EmptyState
-            icon={<SearchIcon size={28} />}
-            title="No results"
-            message="No posts match your search. Try different keywords or expand your radius."
+            icon={SearchX}
+            title="No matches nearby"
+            body={`Nothing matched${dq ? ` “${dq}”` : ''} within ${radius} km. Try a wider radius or different words.`}
           />
         ) : (
-          <>
-            <p className="text-xs text-gray-400 px-1">{results.length} results found</p>
-            {results.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                userCoords={coords as Coords | null}
-              />
-            ))}
-          </>
+          <div className="mx-auto mt-6 max-w-3xl">
+            <p className="mb-3 text-sm text-ink-2">
+              <b className="text-ink">{results.length}</b> result{results.length === 1 ? '' : 's'} within {radius} km
+            </p>
+            <div className="space-y-3">
+              {results.map((p) => (
+                <PostCard key={p.id} post={p} onChange={onChange} />
+              ))}
+            </div>
+          </div>
         )}
-      </div>
-    </div>
+      </PageBody>
+    </>
   );
 }

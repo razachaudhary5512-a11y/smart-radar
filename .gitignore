@@ -21,3 +21,10 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Android build outputs
+android/app/build/
+android/.gradle/
+android/build/
+*.apk
+*.keystore

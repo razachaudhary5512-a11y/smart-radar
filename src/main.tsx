@@ -4,7 +4,7 @@ import App from './App.tsx';
 import './index.css';
 import { validateEnv } from '@/config/validate-env';
 
-// Run environment variable check at startup (warnings only — never crashes).
+// Logs warnings for missing configuration — never crashes.
 validateEnv();
 
 createRoot(document.getElementById('root')!).render(
