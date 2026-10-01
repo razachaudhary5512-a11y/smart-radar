@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { useApi } from '@/data';
 import { toE164PK } from '@/lib/format';
 import { useLocalStorage } from '@/lib/hooks';
+import { ENV } from '@/config/env';
 
 type Step = 'start' | 'code' | 'name';
 type Method = 'phone' | 'email';
@@ -15,7 +16,10 @@ export function AuthSheet() {
   const { authPrompt, closeAuthPrompt, sendOtp, verifyOtp, sendEmailOtp, verifyEmailOtp } = useAuth();
   const api = useApi();
   const toast = useToast();
-  const [method, setMethod] = useLocalStorage<Method>('sr_signin_method', 'phone');
+  // Phone needs an SMS provider in live mode; demo mode always supports both.
+  const phoneAvailable = api.mode === 'demo' || ENV.features.phoneAuth;
+  const [savedMethod, setMethod] = useLocalStorage<Method>('sr_signin_method', phoneAvailable ? 'phone' : 'email');
+  const method: Method = phoneAvailable ? savedMethod : 'email';
   const [step, setStep] = useState<Step>('start');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -119,18 +123,20 @@ export function AuthSheet() {
             <p className="mt-1.5 text-sm text-ink-2">
               {authPrompt.reason ?? 'Post, vote and connect with neighbours.'} We’ll send you a 6-digit code.
             </p>
-            <Segmented
-              className="mt-5 flex w-full"
-              value={method}
-              onChange={(m) => {
-                setMethod(m);
-                setError(null);
-              }}
-              options={[
-                { value: 'phone', label: 'Phone', icon: Phone },
-                { value: 'email', label: 'Email', icon: Mail },
-              ]}
-            />
+            {phoneAvailable && (
+              <Segmented
+                className="mt-5 flex w-full"
+                value={method}
+                onChange={(m) => {
+                  setMethod(m);
+                  setError(null);
+                }}
+                options={[
+                  { value: 'phone', label: 'Phone', icon: Phone },
+                  { value: 'email', label: 'Email', icon: Mail },
+                ]}
+              />
+            )}
             {method === 'phone' ? (
               <>
                 <label className="label mt-4" htmlFor="sr-phone">Mobile number</label>
@@ -181,11 +187,17 @@ export function AuthSheet() {
 
         {step === 'code' && (
           <div>
-            <h2 className="text-xl font-extrabold tracking-tight text-ink">Enter the code</h2>
+            <h2 className="text-xl font-extrabold tracking-tight text-ink">{method === 'email' && !devCode ? 'Check your email' : 'Enter the code'}</h2>
             <p className="mt-1.5 text-sm text-ink-2">
               Sent to <span className="font-semibold text-ink">{target}</span>
               {method === 'email' && ' — check your spam folder too.'}
             </p>
+            {method === 'email' && !devCode && (
+              <div className="mt-4 rounded-xl bg-primary-600/10 px-3.5 py-3 text-[13px] text-ink">
+                <b>Open the email and tap “Log In”</b> on this device — you’ll come back here signed in automatically. You can close this window.
+                <span className="mt-1 block text-ink-2">If the email shows a 6-digit code instead, enter it below.</span>
+              </div>
+            )}
             {devCode && (
               <div className="mt-4 rounded-xl border border-dashed border-warning-500/50 bg-warning-50 px-3.5 py-2.5 text-[13px] text-warning-700 dark:bg-warning-500/10 dark:text-warning-500">
                 Demo mode — nothing is actually sent. Use code <b className="tracking-widest">{devCode}</b>

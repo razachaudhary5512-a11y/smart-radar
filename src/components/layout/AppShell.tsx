@@ -64,7 +64,34 @@ export function AppShell() {
       </div>
       <BottomNav onMore={() => setMoreOpen(true)} />
       <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
+      <NamePrompt />
     </div>
+  );
+}
+
+/** Users who signed in via an email link haven't picked a display name yet. */
+function NamePrompt() {
+  const { user, profile, updateProfile } = useAuth();
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const open = Boolean(user && profile && !profile.display_name?.trim());
+  return (
+    <Sheet open={open} onClose={() => {}} title="Welcome to Smart Radar! 👋" description="What should neighbours call you? This name appears on your posts and comments." size="sm">
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (name.trim().length < 2) return;
+          setBusy(true);
+          await updateProfile({ display_name: name.trim() }).catch(() => {});
+          setBusy(false);
+        }}
+      >
+        <input data-autofocus className="input" placeholder="e.g., Ayesha Khan" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+        <button className="btn-primary mt-4 w-full" disabled={busy || name.trim().length < 2}>
+          {busy ? 'Saving…' : 'Continue'}
+        </button>
+      </form>
+    </Sheet>
   );
 }
 

@@ -8,6 +8,7 @@ import { finalizeFeed } from './feed';
 import { emitChange } from './events';
 import { compressImage } from './images';
 import { requireSupabase } from '@/lib/supabase';
+import { appUrl } from '@/config/env';
 import { boundingBox } from '@/lib/location';
 import { uid } from '@/lib/format';
 import { DEFAULT_SETTINGS, type AppSettings } from '@/lib/types';
@@ -120,8 +121,12 @@ const auth: AuthApi = {
     return { error: error?.message ?? null };
   },
   async sendEmailOtp(email) {
-    // Sends a 6-digit code (configure the "Magic Link" email template to include {{ .Token }}).
-    const { error } = await sb().auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
+    // Supabase emails a sign-in link (and a 6-digit code if the template includes {{ .Token }}).
+    // The link brings the user back to the app, where the session is picked up automatically.
+    const { error } = await sb().auth.signInWithOtp({
+      email: email.trim(),
+      options: { shouldCreateUser: true, emailRedirectTo: appUrl('') },
+    });
     return { error: error?.message ?? null };
   },
   async verifyEmailOtp(email, code) {

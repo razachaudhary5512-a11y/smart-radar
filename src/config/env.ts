@@ -41,6 +41,8 @@ export const ENV = {
     vapidKey: str(env.VITE_FIREBASE_VAPID_KEY),
   },
   features: {
+    /** Phone (SMS) sign-in. Set VITE_ENABLE_PHONE_AUTH=false until an SMS provider is connected in Supabase. */
+    phoneAuth: str(env.VITE_ENABLE_PHONE_AUTH) !== 'false',
     /** Custom SMS via the `send-sms` Edge Function (Twilio secrets live server-side). */
     customSms: str(env.VITE_ENABLE_CUSTOM_SMS) === 'true',
     /** JazzCash / EasyPaisa via the `process-payment` Edge Function. */

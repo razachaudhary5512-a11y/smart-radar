@@ -28,3 +28,4 @@ android/.gradle/
 android/build/
 *.apk
 *.keystore
+.env.backup*
