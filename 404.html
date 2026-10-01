@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Smart Radar — Your Neighborhood, One App</title>
+    <meta name="description" content="Everything happening within 1–5 km of you — alerts, deals, services, transport, and community. All in one place." />
+    <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#080b13" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Smart Radar" />
+    <link rel="icon" type="image/svg+xml" href="/smart-radar/favicon.svg" />
+    <link rel="apple-touch-icon" href="/smart-radar/favicon.svg" />
+    <link rel="manifest" href="/smart-radar/manifest.webmanifest" />
+    <meta property="og:title" content="Smart Radar — Your Neighborhood, One App" />
+    <meta property="og:description" content="Alerts, deals, services, jobs, carpools and community — everything within 1–5 km of you." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Apply theme before first paint to avoid a light/dark flash.
+      (function () {
+        try {
+          var t = localStorage.getItem('sr_theme') || 'system';
+          var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/smart-radar/assets/index-Bt_W0Qwu.js"></script>
+    <link rel="modulepreload" crossorigin href="/smart-radar/assets/react-DJB7swYj.js">
+    <link rel="modulepreload" crossorigin href="/smart-radar/assets/supabase-CErB8ObN.js">
+    <link rel="stylesheet" crossorigin href="/smart-radar/assets/index-C2z7R8Ca.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

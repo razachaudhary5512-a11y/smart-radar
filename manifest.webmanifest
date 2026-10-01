@@ -1,0 +1,16 @@
+{
+  "name": "Smart Radar — Your Neighborhood, One App",
+  "short_name": "Smart Radar",
+  "description": "Everything happening within 1–5 km of you — alerts, deals, services, transport, and community.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7fb",
+  "theme_color": "#2549ea",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
