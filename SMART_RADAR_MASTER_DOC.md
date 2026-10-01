@@ -56,8 +56,11 @@ npm run dev               # http://localhost:5173
 
 | What | How |
 |---|---|
-| Sign in | any Pakistani mobile number, code **123456** |
-| Admin console | `/admin/login` → `admin@smartradar.demo` / `demo-admin` (or "Fill demo credentials") |
+| Sign in | any Pakistani mobile number **or email**, code **123456** |
+| Owner console | `/admin/login` → **Owner** (`owner@smartradar.demo` / `demo-owner`) — full control |
+| Admin console | `/admin/login` → **Admin** (`admin@smartradar.demo` / `demo-admin`) — moderation only |
+| Live website | https://razachaudhary5512-a11y.github.io/smart-radar/ (`npm run deploy:pages`) |
+| Android APK | `npm run apk` → `android/app/build/outputs/apk/debug/app-debug.apk` |
 | Data | stored in the browser (`localStorage`); Profile → Privacy → *Reset demo data* |
 
 Demo content is generated around the viewer's real location and its timestamps stay fresh, so the app always looks alive.
@@ -255,7 +258,14 @@ Also: scheduled posts hidden from the public until due; storage uploads restrict
 
 ---
 
-## 12. Admin System
+## 12. Owner & Admin System
+
+**Roles:** Owner › Admin › User. The **owner** (you) can do everything an admin can, plus two owner-only areas:
+
+- **Team & roles** — appoint or remove admins (owners can't be demoted or suspended; every change is audited).
+- **App settings** — announcement banner (info / warning / good-news) shown to every user; pause all new posts; switch categories off; require CNIC verification to post in chosen categories; default radar radius for new visitors. All rules are enforced by the database (`can_post_category()` in the posts INSERT policy), admins are exempt so they can post official notices.
+
+Make yourself owner once (live mode), after signing up: `UPDATE profiles SET is_owner = true, is_admin = true WHERE id = '<your-user-id>';`
 
 **Architecture — one codebase, separate panel.** The admin console lives in the same project but is a completely separate area: its own URL (`/admin`), its own layout (dark sidebar, no user navigation), and its own code chunk that regular users never download. Access is enforced by the database (`auth_is_admin()` in RLS and every admin RPC), not by hiding the page — so a separate deployment isn't needed for security. If you later want `admin.yourdomain.com`, deploy the same build a second time and point that domain at `/admin`.
 
@@ -304,11 +314,14 @@ Removed in v2: `VITE_TWILIO_*`, `VITE_JAZZCASH_*` — these must be Edge Functio
 ## 15. Going Live Checklist
 
 1. Create a new Supabase project (the v1 project `zmwmbb…` no longer exists).
-2. Run the four migrations in order (SQL editor or `supabase db push`). All are idempotent; 68 automated security checks pass against them.
+2. Run the five migrations in order (SQL editor or `supabase db push`). All are idempotent; 86 automated security checks pass against them.
 3. Enable **Phone** auth (Twilio/MessageBird provider) and set the SMS rate limit.
 4. Put the new URL + anon key in `.env`; set `VITE_DATA_MODE=live` (or leave `auto`).
 5. Create your admin user (§12).
-6. `npm run build` and deploy `dist/` (Netlify, Vercel, Cloudflare Pages) with SPA fallback to `index.html`.
+6. In `.env.pages` and `.env.android` change `VITE_DATA_MODE=demo` to `auto`, then `npm run deploy:pages` (website) and `npm run apk` (Android).
+7. Supabase → Authentication → Email templates → "Magic Link": include `{{ .Token }}` so users receive the 6-digit email code.
+
+**Deployment:** the website is hosted on GitHub Pages from the `gh-pages` branch of `razachaudhary5512-a11y/smart-radar` (`npm run deploy:pages` builds with base `/smart-radar/`, adds `404.html` SPA fallback). The Android app is a Capacitor wrapper of the same build (`com.smartradar.app`); `npm run apk` produces a debug-signed APK for sideloading. For the Play Store, create a release keystore and run `gradlew bundleRelease`.
 
 ---
 
