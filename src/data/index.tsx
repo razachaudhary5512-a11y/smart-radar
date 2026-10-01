@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { DataApi } from './api';
-import { demoApi } from './demo';
 import { ENV, isSupabaseConfigured } from '@/config/env';
 import { pingSupabase } from '@/lib/supabase';
+import { loadDemo } from './demo-loader';
 
 export type { DataApi, BackendMode, SessionUser } from './api';
 export { onChange as onDataChange } from './events';
@@ -15,16 +15,38 @@ interface BackendState {
 
 const BackendContext = createContext<BackendState | null>(null);
 
+/** Demo backend + sample data are a separate chunk, only downloaded in demo mode. */
+async function demo(reason: NonNullable<BackendState['demoReason']>): Promise<BackendState> {
+  const { demoApi } = await loadDemo();
+  return { api: demoApi, demoReason: reason };
+}
+
+/** Remove sample data an older demo build may have left in this browser. */
+function clearDemoLeftovers() {
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith('sr_demo_'))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 async function resolveBackend(): Promise<BackendState> {
-  if (ENV.dataMode === 'demo') return { api: demoApi, demoReason: 'forced' };
-  if (!isSupabaseConfigured) return { api: demoApi, demoReason: 'not-configured' };
+  if (ENV.dataMode === 'demo') return demo('forced');
+  if (!isSupabaseConfigured) return demo('not-configured');
   const { liveApi } = await import('./live');
-  if (ENV.dataMode === 'live') return { api: liveApi, demoReason: null };
+  if (ENV.dataMode === 'live') {
+    // Production: never fall back to sample data.
+    clearDemoLeftovers();
+    return { api: liveApi, demoReason: null };
+  }
   const reachable = await pingSupabase();
   if (!reachable) {
     console.warn('[Smart Radar] Supabase project is unreachable — falling back to demo mode.');
-    return { api: demoApi, demoReason: 'unreachable' };
+    return demo('unreachable');
   }
+  clearDemoLeftovers();
   return { api: liveApi, demoReason: null };
 }
 

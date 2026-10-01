@@ -56,6 +56,22 @@ export async function registerBackButton(goBack: () => void, atRoot: () => boole
   return () => handle.remove();
 }
 
+/** Where sign-in emails send the user back to inside the Android app. */
+export const APP_AUTH_CALLBACK = 'com.smartradar.app://auth-callback';
+
+/**
+ * Calls `handler` with every deep link that opens the app (including the one
+ * that launched it), e.g. the email sign-in link.
+ */
+export async function onDeepLink(handler: (url: string) => void): Promise<() => void> {
+  if (!isNative) return () => {};
+  const { App } = await import('@capacitor/app');
+  const launch = await App.getLaunchUrl();
+  if (launch?.url) handler(launch.url);
+  const handle = await App.addListener('appUrlOpen', ({ url }) => handler(url));
+  return () => handle.remove();
+}
+
 /** Match the Android status bar to the app theme. */
 export async function syncStatusBar(dark: boolean) {
   if (!isNative) return;

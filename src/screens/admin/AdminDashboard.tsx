@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Activity,
   AlertTriangle,
+  Globe,
+  Smartphone,
   ArrowLeft,
   BadgeCheck,
   Ban,
@@ -48,10 +51,11 @@ import { cn, formatDate, formatDateTime, maskCnic, timeAgo } from '@/lib/format'
 import type { AdminOverview, AdminUser, AdminUserFilter, AppSettings, EmergencyContact, PostWithRelations, ProviderListing } from '@/lib/types';
 import { CategoryBars, DailyBars } from './charts';
 
-type Tab = 'overview' | 'moderation' | 'users' | 'verification' | 'listings' | 'emergency' | 'audit' | 'team' | 'settings';
+type Tab = 'overview' | 'activity' | 'moderation' | 'users' | 'verification' | 'listings' | 'emergency' | 'audit' | 'team' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'activity', label: 'Live activity', icon: Activity },
   { id: 'moderation', label: 'Moderation', icon: Flag },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'verification', label: 'Verification', icon: UserCheck },
@@ -167,6 +171,7 @@ export function AdminDashboard() {
 
         <main className="mx-auto max-w-7xl px-4 py-5 lg:px-8 lg:py-8">
           {tab === 'overview' && <Overview data={o} loading={overview.loading} goto={setTab} />}
+          {tab === 'activity' && <LiveActivity />}
           {tab === 'moderation' && <Moderation />}
           {tab === 'users' && <UsersAdmin />}
           {tab === 'verification' && <Verification />}
@@ -369,6 +374,157 @@ function Overview({ data, loading, goto }: { data: AdminOverview | undefined; lo
                 </li>
               ))}
             </ol>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ── Live activity ───────────────────────────────────────────────────────────
+
+const REFRESH_MS = 15_000;
+
+function SourceBadge({ source }: { source: unknown }) {
+  if (source === 'android')
+    return (
+      <Badge className="bg-success-500/15 text-success-700 dark:text-success-500">
+        <Smartphone className="h-3 w-3" /> App
+      </Badge>
+    );
+  if (source === 'web')
+    return (
+      <Badge tone="primary">
+        <Globe className="h-3 w-3" /> Web
+      </Badge>
+    );
+  return null;
+}
+
+/** What's happening right now across the Android app and website (auto-refreshes). */
+function LiveActivity() {
+  const api = useApi();
+  const posts = useQuery(() => api.admin.listPosts('all'), [api], { scopes: ['posts', 'admin'] });
+  const users = useQuery(() => api.admin.listUsers('', 'all'), [api], { scopes: ['admin', 'profile'] });
+  const [updated, setUpdated] = useState(Date.now());
+  const [, tick] = useState(0);
+
+  useEffect(() => {
+    const refresh = setInterval(() => {
+      posts.refetch();
+      users.refetch();
+      setUpdated(Date.now());
+    }, REFRESH_MS);
+    const clock = setInterval(() => tick((n) => n + 1), 1000);
+    return () => {
+      clearInterval(refresh);
+      clearInterval(clock);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const latestPosts = useMemo(() => [...(posts.data ?? [])].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)).slice(0, 25), [posts.data]);
+  const latestUsers = useMemo(() => [...(users.data ?? [])].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)).slice(0, 15), [users.data]);
+  const dayAgo = Date.now() - 86_400_000;
+  const today = (posts.data ?? []).filter((p) => +new Date(p.created_at) > dayAgo);
+  const stats = [
+    { label: 'Posts today', value: today.length, icon: FileText },
+    { label: 'From Android app', value: today.filter((p) => p.metadata?._source === 'android').length, icon: Smartphone },
+    { label: 'From website', value: today.filter((p) => p.metadata?._source === 'web').length, icon: Globe },
+    { label: 'New members today', value: (users.data ?? []).filter((u) => +new Date(u.created_at) > dayAgo).length, icon: Users },
+  ];
+  const ago = Math.round((Date.now() - updated) / 1000);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2 text-[13px] text-ink-2">
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success-500 opacity-60" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-success-500" />
+        </span>
+        Live — refreshes every {REFRESH_MS / 1000}s · updated {ago < 2 ? 'just now' : `${ago}s ago`}
+        <button
+          className="btn-ghost btn-sm ml-auto"
+          onClick={() => {
+            posts.refetch();
+            users.refetch();
+            setUpdated(Date.now());
+          }}
+        >
+          Refresh now
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+        {stats.map((s) => (
+          <div key={s.label} className="card p-4">
+            <s.icon className="h-5 w-5 text-primary-600" />
+            <p className="mt-2 text-2xl font-extrabold tabular-nums text-ink">{s.value}</p>
+            <p className="text-[13px] text-ink-2">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <section className="card overflow-hidden">
+          <h2 className="px-5 py-4 font-bold text-ink">Latest posts</h2>
+          {posts.loading && !posts.data ? (
+            <Spinner className="mx-auto mb-6" />
+          ) : !latestPosts.length ? (
+            <EmptyState icon={FileText} title="No posts yet" body="New posts from the Android app and website will appear here instantly." className="py-10" />
+          ) : (
+            <ul className="divide-y divide-line border-t border-line">
+              {latestPosts.map((p) => (
+                <li key={p.id}>
+                  <Link to={`/post/${p.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-surface-2">
+                    <CategoryIcon slug={p.category} size={36} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink">{p.title}</p>
+                      <p className="truncate text-xs text-ink-3">
+                        {p.author?.display_name ?? 'Member'} · {getCategory(p.category).short} · {timeAgo(p.created_at)}
+                        {p.location_label ? ` · ${p.location_label}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <SourceBadge source={p.metadata?._source} />
+                      {p.status !== 'active' && <Badge tone={p.status === 'hidden' ? 'danger' : 'neutral'}>{p.status}</Badge>}
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="card overflow-hidden">
+          <h2 className="px-5 py-4 font-bold text-ink">Newest members</h2>
+          {users.loading && !users.data ? (
+            <Spinner className="mx-auto mb-6" />
+          ) : !latestUsers.length ? (
+            <EmptyState icon={Users} title="No members yet" body="People who sign up in the app or on the website appear here." className="py-10" />
+          ) : (
+            <ul className="divide-y divide-line border-t border-line">
+              {latestUsers.map((u) => (
+                <li key={u.id} className="flex items-center gap-3 px-5 py-3">
+                  <Avatar name={u.display_name} size={34} />
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-1 truncate text-sm font-semibold text-ink">
+                      {u.display_name} <VerifiedBadge profile={u} size={13} />
+                    </p>
+                    <p className="text-xs text-ink-3">
+                      joined {timeAgo(u.created_at)} · {u.post_count} post{u.post_count === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  {u.is_owner ? (
+                    <Badge className="bg-amber-400/15 text-amber-700 dark:text-amber-300">Owner</Badge>
+                  ) : u.is_admin ? (
+                    <Badge tone="primary">Admin</Badge>
+                  ) : u.is_banned ? (
+                    <Badge tone="danger">Suspended</Badge>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       </div>

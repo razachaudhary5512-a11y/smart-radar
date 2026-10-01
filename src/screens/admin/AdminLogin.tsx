@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, Eye, EyeOff, Lock, ScrollText, ShieldCheck, UserCheck } from 'lucide-react';
+import { ArrowLeft, Crown, Eye, EyeOff, Lock, Mail, ScrollText, ShieldCheck, UserCheck } from 'lucide-react';
 import { LogoMark } from '@/components/layout/Logo';
 import { useAuth } from '@/lib/auth';
 import { useBackend } from '@/data';
-import { DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD, DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD } from '@/data/demo/seed';
+import { loadDemoSeed } from '@/data/demo-loader';
+type DemoCreds = { ownerEmail: string; ownerPassword: string; adminEmail: string; adminPassword: string };
 
 export function AdminLogin() {
-  const { adminSignIn, isAdmin, user, signOut } = useAuth();
+  const { adminSignIn, isAdmin, user, profile, signOut, requireAuth } = useAuth();
   const { demoReason } = useBackend();
+  // Demo logins are loaded only in demo mode, so they never ship with the live app.
+  const [demo, setDemo] = useState<DemoCreds | null>(null);
+  useEffect(() => {
+    if (!demoReason) return;
+    loadDemoSeed().then((m) =>
+      setDemo({ ownerEmail: m.DEMO_OWNER_EMAIL, ownerPassword: m.DEMO_OWNER_PASSWORD, adminEmail: m.DEMO_ADMIN_EMAIL, adminPassword: m.DEMO_ADMIN_PASSWORD })
+    );
+  }, [demoReason]);
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/admin/dashboard';
@@ -68,20 +77,32 @@ export function AdminLogin() {
           <div className="mt-10 lg:mt-0">
             <LogoMark size={48} className="lg:hidden" />
             <h2 className="mt-6 text-2xl font-extrabold tracking-tight text-ink lg:mt-0">Owner & admin sign in</h2>
-            <p className="mt-1.5 text-sm text-ink-2">Use your owner or moderator email and password.</p>
+            <p className="mt-1.5 text-sm text-ink-2">Sign in with the email linked to your owner or admin account.</p>
           </div>
 
-          {user && !isAdmin && (
+          {user && profile && !isAdmin && (
             <div className="mt-6 rounded-xl bg-surface-2 p-3.5 text-[13px] text-ink-2">
-              You’re signed in as a regular user.{' '}
+              You’re signed in as <b className="text-ink">{profile.display_name || user.email || 'a member'}</b>, which doesn’t have admin access yet. Ask the
+              owner to add you under <b>Team &amp; roles</b>, or{' '}
               <button className="font-semibold text-primary-600" onClick={signOut}>
-                Sign out
+                sign out
               </button>{' '}
-              to use an admin account.
+              and use another account.
             </div>
           )}
 
-          {demoReason && (
+          {!user && !demoReason && (
+            <>
+              <button type="button" className="btn-primary mt-6 w-full" onClick={() => requireAuth('Sign in with your owner or admin email.')}>
+                <Mail className="h-4 w-4" /> Sign in with email code / link
+              </button>
+              <div className="my-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-wider text-ink-3">
+                <span className="h-px flex-1 bg-line" /> or with a password <span className="h-px flex-1 bg-line" />
+              </div>
+            </>
+          )}
+
+          {demoReason && demo && (
             <div className="mt-6 rounded-xl border border-dashed border-warning-500/50 bg-warning-50 p-3.5 text-[13px] text-warning-700 dark:bg-warning-500/10 dark:text-warning-500">
               <p>
                 <b>Demo mode</b> — try either role:
@@ -91,8 +112,8 @@ export function AdminLogin() {
                   type="button"
                   className="rounded-lg bg-white/70 px-2.5 py-2 text-left font-semibold ring-1 ring-warning-500/40 hover:bg-white dark:bg-black/20"
                   onClick={() => {
-                    setEmail(DEMO_OWNER_EMAIL);
-                    setPassword(DEMO_OWNER_PASSWORD);
+                    setEmail(demo.ownerEmail);
+                    setPassword(demo.ownerPassword);
                   }}
                 >
                   <Crown className="mb-0.5 inline h-3.5 w-3.5" /> Owner
@@ -102,8 +123,8 @@ export function AdminLogin() {
                   type="button"
                   className="rounded-lg bg-white/70 px-2.5 py-2 text-left font-semibold ring-1 ring-warning-500/40 hover:bg-white dark:bg-black/20"
                   onClick={() => {
-                    setEmail(DEMO_ADMIN_EMAIL);
-                    setPassword(DEMO_ADMIN_PASSWORD);
+                    setEmail(demo.adminEmail);
+                    setPassword(demo.adminPassword);
                   }}
                 >
                   <ShieldCheck className="mb-0.5 inline h-3.5 w-3.5" /> Admin

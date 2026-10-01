@@ -26,7 +26,7 @@ import {
 import { PageBody, PageHeader, RequireAuth } from '@/components/layout/Page';
 import { Avatar, Badge, ConfirmDialog, Segmented, Sheet, Switch, TrustRing, VerifiedBadge, useToast, verificationState } from '@/components/ui';
 import { useApi, useBackend } from '@/data';
-import { resetDemoData } from '@/data/demo';
+import { loadDemo } from '@/data/demo-loader';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/lib/theme';
 import { useRadar } from '@/lib/location-context';
@@ -766,7 +766,8 @@ function PrivacySection({ profile }: { profile: ProfileT }) {
         confirmLabel="Reset"
         tone="danger"
         onClose={() => setResetOpen(false)}
-        onConfirm={() => {
+        onConfirm={async () => {
+          const { resetDemoData } = await loadDemo();
           resetDemoData();
           window.location.assign(import.meta.env.BASE_URL);
         }}

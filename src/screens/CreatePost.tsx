@@ -26,6 +26,7 @@ import { CategoryIcon, EmptyState, Spinner, Switch, useToast } from '@/component
 import { useApi } from '@/data';
 import { useAuth } from '@/lib/auth';
 import { useAppSettings } from '@/lib/settings';
+import { isNative } from '@/lib/native';
 import { useRadar } from '@/lib/location-context';
 import { useDebounced } from '@/lib/hooks';
 import { categoriesByGroup, formatExpiryRule, getCategory, getExpiryDate, type CategoryField } from '@/lib/categories';
@@ -223,6 +224,8 @@ function Composer({ editId }: { editId: string | null }) {
       } else {
         const created = await api.createPost(user.id, {
           ...base,
+          // Lets the owner/admin console show where activity comes from.
+          metadata: { ...base.metadata, _source: isNative ? 'android' : 'web' },
           category: cat.slug,
           expires_at: getExpiryDate(cat.slug, scheduled ? new Date(scheduled) : new Date()),
           scheduled_for: scheduled,

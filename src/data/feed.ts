@@ -9,7 +9,10 @@ function hotScore(p: PostWithRelations): number {
 }
 
 function matchesSearch(p: PostWithRelations, term: string): boolean {
-  const hay = [p.title, p.description, p.location_label, ...Object.values(p.metadata ?? {}).map(String)].join(' ').toLowerCase();
+  const meta = Object.entries(p.metadata ?? {})
+    .filter(([k]) => !k.startsWith('_')) // internal fields like _source aren't searchable
+    .map(([, v]) => String(v));
+  const hay = [p.title, p.description, p.location_label, ...meta].join(' ').toLowerCase();
   return term
     .toLowerCase()
     .split(/\s+/)

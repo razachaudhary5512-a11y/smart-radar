@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { registerBackButton } from '@/lib/native';
-import { BackendProvider } from '@/data';
-import { AuthProvider } from '@/lib/auth';
+import { onDeepLink, registerBackButton } from '@/lib/native';
+import { BackendProvider, useApi } from '@/data';
+import { AuthProvider, useAuth } from '@/lib/auth';
 import { SettingsProvider } from '@/lib/settings';
 import { ThemeProvider } from '@/lib/theme';
 import { LocationProvider } from '@/lib/location-context';
-import { ToastProvider } from '@/components/ui';
+import { ToastProvider, useToast } from '@/components/ui';
 import { AppShell, PageLoader } from '@/components/layout/AppShell';
 import { AuthSheet } from '@/components/AuthSheet';
 import { LogoMark } from '@/components/layout/Logo';
@@ -43,6 +43,35 @@ function NativeBridge() {
     ).then((o) => (off = o));
     return () => off();
   }, [navigate]);
+  return null;
+}
+
+/** Completes email-link sign-in when the link reopens the Android app. */
+function DeepLinkAuth() {
+  const api = useApi();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const { authPrompt, closeAuthPrompt } = useAuth();
+  const promptOpen = useRef(authPrompt.open);
+  promptOpen.current = authPrompt.open;
+  useEffect(() => {
+    if (api.mode !== 'live') return;
+    let off = () => {};
+    onDeepLink(async (url) => {
+      const { completeAuthFromUrl } = await import('@/data/live');
+      const res = await completeAuthFromUrl(url);
+      if (res.error) {
+        toast.error('Sign-in link didn’t work', res.error);
+        return;
+      }
+      if (url.includes('access_token') || url.includes('code=')) {
+        if (promptOpen.current) closeAuthPrompt(true);
+        toast.success('You’re signed in');
+        navigate('/', { replace: true });
+      }
+    }).then((o) => (off = o));
+    return () => off();
+  }, [api.mode, toast, navigate, closeAuthPrompt]);
   return null;
 }
 
@@ -97,6 +126,7 @@ export default function App() {
                   </Routes>
                 </Suspense>
                 <AuthSheet />
+                <DeepLinkAuth />
               </LocationProvider>
             </ThemeProvider>
             </SettingsProvider>

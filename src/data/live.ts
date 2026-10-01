@@ -9,6 +9,7 @@ import { emitChange } from './events';
 import { compressImage } from './images';
 import { requireSupabase } from '@/lib/supabase';
 import { appUrl } from '@/config/env';
+import { APP_AUTH_CALLBACK, isNative } from '@/lib/native';
 import { boundingBox } from '@/lib/location';
 import { uid } from '@/lib/format';
 import { DEFAULT_SETTINGS, type AppSettings } from '@/lib/types';
@@ -125,7 +126,8 @@ const auth: AuthApi = {
     // The link brings the user back to the app, where the session is picked up automatically.
     const { error } = await sb().auth.signInWithOtp({
       email: email.trim(),
-      options: { shouldCreateUser: true, emailRedirectTo: appUrl('') },
+      // In the Android app the link must reopen the app, not the phone's browser.
+      options: { shouldCreateUser: true, emailRedirectTo: isNative ? APP_AUTH_CALLBACK : appUrl('') },
     });
     return { error: error?.message ?? null };
   },
@@ -173,6 +175,30 @@ const auth: AuthApi = {
     emitChange('profile');
   },
 };
+
+/**
+ * Finish an email-link sign-in that reopened the Android app.
+ * Handles both PKCE (?code=…) and implicit (#access_token=…) redirects.
+ */
+export async function completeAuthFromUrl(url: string): Promise<{ error: string | null }> {
+  if (!url.startsWith(APP_AUTH_CALLBACK)) return { error: null };
+  const u = new URL(url.replace(APP_AUTH_CALLBACK, 'https://callback.local/'));
+  const hash = new URLSearchParams(u.hash.replace(/^#/, ''));
+  const err = u.searchParams.get('error_description') ?? hash.get('error_description');
+  if (err) return { error: err.replace(/\+/g, ' ') };
+  const code = u.searchParams.get('code');
+  if (code) {
+    const { error } = await sb().auth.exchangeCodeForSession(code);
+    return { error: error?.message ?? null };
+  }
+  const access_token = hash.get('access_token');
+  const refresh_token = hash.get('refresh_token');
+  if (access_token && refresh_token) {
+    const { error } = await sb().auth.setSession({ access_token, refresh_token });
+    return { error: error?.message ?? null };
+  }
+  return { error: null };
+}
 
 // ── admin ───────────────────────────────────────────────────────────────────
 
