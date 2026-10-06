@@ -15,6 +15,7 @@ import { categoryPin, clusterPin, emergencyPin, youAreHere } from '@/components/
 import { AreaSheet } from '@/components/radar/AreaSheet';
 import { CategoryIcon, SmartImage, VerifiedBadge } from '@/components/ui';
 import { TILE_ATTRIBUTION, TILE_URL } from '@/services/maps';
+import { zoomForRadius } from '@/lib/places';
 import type { Coords, EmergencyContact, PostWithRelations } from '@/lib/types';
 
 export function MapView() {
@@ -54,7 +55,13 @@ export function MapView() {
 
   return (
     <div className="relative h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] overflow-hidden lg:h-dvh">
-      <MapContainer center={[radar.coords.lat, radar.coords.lng]} zoom={14} className="h-full w-full" zoomControl={false} attributionControl>
+      <MapContainer
+        center={[radar.coords.lat, radar.coords.lng]}
+        zoom={zoomForRadius(radar.radiusKm)}
+        className="h-full w-full"
+        zoomControl={false}
+        attributionControl
+      >
         <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
         <ZoomControlBottomRight />
         <Circle
@@ -68,7 +75,7 @@ export function MapView() {
           emergencyPins.map((e) => (
             <Marker key={e.id} position={[e.lat, e.lng]} icon={emergencyPin()} eventHandlers={{ click: () => window.open(telLink(e.phone), '_self') }} />
           ))}
-        <Recenter center={radar.coords} />
+        <Recenter center={radar.coords} radiusKm={radar.radiusKm} />
         <FlyTo target={flyTo} />
         <MapClick onClick={() => setSelected(null)} />
       </MapContainer>
@@ -259,11 +266,12 @@ function ZoomControlBottomRight() {
   return null;
 }
 
-function Recenter({ center }: { center: Coords }) {
+/** Re-centre and zoom so the whole radar circle (1–50 km) is in view. */
+function Recenter({ center, radiusKm }: { center: Coords; radiusKm: number }) {
   const map = useMap();
   useEffect(() => {
-    map.setView([center.lat, center.lng], map.getZoom(), { animate: true });
-  }, [map, center.lat, center.lng]);
+    map.setView([center.lat, center.lng], zoomForRadius(radiusKm), { animate: true });
+  }, [map, center.lat, center.lng, radiusKm]);
   return null;
 }
 

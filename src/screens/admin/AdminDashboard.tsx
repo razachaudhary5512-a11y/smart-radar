@@ -50,6 +50,7 @@ import { getCategory } from '@/lib/categories';
 import { cn, formatDate, formatDateTime, maskCnic, timeAgo } from '@/lib/format';
 import type { AdminOverview, AdminUser, AdminUserFilter, AppSettings, EmergencyContact, PostWithRelations, ProviderListing } from '@/lib/types';
 import { CategoryBars, DailyBars } from './charts';
+import { RadiusSelect } from '@/components/radar/Pickers';
 
 type Tab = 'overview' | 'activity' | 'moderation' | 'users' | 'verification' | 'listings' | 'emergency' | 'audit' | 'team' | 'settings';
 
@@ -1455,12 +1456,7 @@ function SettingsAdmin() {
             <p className="font-bold text-ink">Default radar radius</p>
             <p className="text-[13px] text-ink-2">Used for new visitors until they choose their own.</p>
           </div>
-          <Segmented
-            size="sm"
-            value={String(draft.default_radius_km) as '3'}
-            onChange={(v) => setDraft({ ...draft, default_radius_km: Number(v) })}
-            options={['1', '2', '3', '4', '5'].map((k) => ({ value: k as '3', label: `${k} km` }))}
-          />
+          <RadiusSelect value={draft.default_radius_km} onChange={(v) => setDraft({ ...draft, default_radius_km: v })} />
         </div>
       </section>
 

@@ -33,10 +33,11 @@ import { PostCard } from '@/components/post/PostCard';
 import { RadarScope } from '@/components/RadarScope';
 import { AreaSheet, RadiusSheet } from '@/components/radar/AreaSheet';
 import { LogoMark } from '@/components/layout/Logo';
+import { MAX_RADIUS_KM } from '@/lib/places';
 import { ProvidersCard, ProvidersSection } from '@/components/Providers';
 import { CategoryIcon, EmptyState, ErrorState, PostCardSkeleton, Segmented } from '@/components/ui';
 
-const MAX_RADIUS = 5;
+const MAX_RADIUS = MAX_RADIUS_KM; // fetch once at the max; radius changes then filter instantly
 
 export function HomeFeed() {
   const api = useApi();

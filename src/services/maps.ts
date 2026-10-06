@@ -69,13 +69,14 @@ interface NominatimSearch {
   name?: string;
 }
 
-/** Place search, biased to Pakistan. */
-export async function searchPlaces(query: string): Promise<PlaceResult[]> {
+/** Place search within one country (ISO code, default Pakistan); pass null to search worldwide. */
+export async function searchPlaces(query: string, countryCode: string | null = 'pk'): Promise<PlaceResult[]> {
   const q = query.trim();
   if (q.length < 3) return [];
+  const cc = countryCode ? `&countrycodes=${countryCode.toLowerCase()}` : '';
   const data = await throttled<NominatimSearch[]>(
-    `s:${q.toLowerCase()}`,
-    `${NOMINATIM}/search?format=jsonv2&limit=6&countrycodes=pk&q=${encodeURIComponent(q)}`
+    `s:${countryCode ?? '*'}:${q.toLowerCase()}`,
+    `${NOMINATIM}/search?format=jsonv2&limit=6${cc}&q=${encodeURIComponent(q)}`
   );
   return (data ?? []).map((r) => {
     const parts = r.display_name.split(',').map((s) => s.trim());

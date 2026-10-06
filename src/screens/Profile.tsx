@@ -24,6 +24,8 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { PageBody, PageHeader, RequireAuth } from '@/components/layout/Page';
+import { AreaSheet } from '@/components/radar/AreaSheet';
+import { RadiusPicker, RadiusSelect } from '@/components/radar/Pickers';
 import { Avatar, Badge, ConfirmDialog, Segmented, Sheet, Switch, TrustRing, VerifiedBadge, useToast, verificationState } from '@/components/ui';
 import { useApi, useBackend } from '@/data';
 import { loadDemo } from '@/data/demo-loader';
@@ -391,17 +393,21 @@ function RadarSection({ profile }: { profile: ProfileT }) {
   const save = useSave();
   const [placeOpen, setPlaceOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
+  const [areaOpen, setAreaOpen] = useState(false);
 
   return (
-    <Section id="radar" icon={Radar} title="Radar & places" description="Your default scan radius, saved places and neighbourhoods you watch.">
-      <Row title="Scan radius" body="How far your feed looks by default.">
-        <Segmented
-          size="sm"
-          value={String(radar.radiusKm) as '3'}
-          onChange={(v) => radar.setRadiusKm(Number(v))}
-          options={['1', '2', '3', '4', '5'].map((k) => ({ value: k as '3', label: `${k}` }))}
-        />
+    <Section id="radar" icon={Radar} title="Radar & places" description="Your city or country, scan radius, saved places and neighbourhoods you watch.">
+      <Row title="City / country" body={radar.area.kind === 'gps' ? 'Using your current location' : radar.areaLabel}>
+        <button className="btn-secondary btn-sm" onClick={() => setAreaOpen(true)}>
+          <MapPin className="h-4 w-4" /> Change
+        </button>
       </Row>
+      <div className="border-t border-line py-4">
+        <p className="text-sm font-semibold text-ink">Scan radius</p>
+        <p className="mb-3 text-xs text-ink-2">How far your feed looks — from 1 km up to 50 km.</p>
+        <RadiusPicker value={radar.radiusKm} onChange={radar.setRadiusKm} compact />
+      </div>
+      <AreaSheet open={areaOpen} onClose={() => setAreaOpen(false)} />
 
       <div className="mt-2 border-t border-line pt-4">
         <div className="mb-2 flex items-center justify-between">
@@ -504,6 +510,7 @@ function SavePlaceSheet({ open, onClose, profile }: { open: boolean; onClose(): 
 
 function WatchAreaSheet({ open, onClose, profile }: { open: boolean; onClose(): void; profile: ProfileT }) {
   const save = useSave();
+  const radar = useRadar();
   const [q, setQ] = useState('');
   const dq = useDebounced(q, 450);
   const [results, setResults] = useState<PlaceResult[]>([]);
@@ -515,11 +522,11 @@ function WatchAreaSheet({ open, onClose, profile }: { open: boolean; onClose(): 
       setResults([]);
       return;
     }
-    searchPlaces(dq).then((r) => alive && setResults(r));
+    searchPlaces(dq, radar.countryCode).then((r) => alive && setResults(r));
     return () => {
       alive = false;
     };
-  }, [dq]);
+  }, [dq, radar.countryCode]);
 
   async function add(r: PlaceResult) {
     const area: WatchedArea = {
@@ -545,7 +552,7 @@ function WatchAreaSheet({ open, onClose, profile }: { open: boolean; onClose(): 
       </div>
       <div className="mt-3 flex items-center justify-between">
         <span className="text-sm font-semibold text-ink-2">Radius</span>
-        <Segmented size="sm" value={String(radius) as '3'} onChange={(v) => setRadius(Number(v))} options={['1', '2', '3', '4', '5'].map((k) => ({ value: k as '3', label: `${k} km` }))} />
+        <RadiusSelect value={radius} onChange={setRadius} />
       </div>
       <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line empty:hidden">
         {results.map((r) => (

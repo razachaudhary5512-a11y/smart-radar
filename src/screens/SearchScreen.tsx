@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Clock, Search, SearchX, X } from 'lucide-react';
+import { Clock, MapPin, Search, SearchX, X } from 'lucide-react';
+import { AreaSheet } from '@/components/radar/AreaSheet';
+import { RadiusSelect } from '@/components/radar/Pickers';
+import { MAX_RADIUS_KM } from '@/lib/places';
 import { PageBody, PageHeader } from '@/components/layout/Page';
 import { PostCard } from '@/components/post/PostCard';
 import { ProvidersSection } from '@/components/Providers';
@@ -24,12 +27,14 @@ export function SearchScreen() {
   const [q, setQ] = useState(params.get('q') ?? '');
   const dq = useDebounced(q, 250);
   const [category, setCategory] = useState<string | null>(params.get('category'));
-  const [radius, setRadius] = useState(5);
+  const [radius, setRadius] = useState(() => Math.max(5, radar.radiusKm));
   const [sort, setSort] = useState<FeedSort>('nearest');
   const [recent, setRecent] = useLocalStorage<string[]>('sr_recent_searches', []);
+  const [areaOpen, setAreaOpen] = useState(false);
 
+  // Fetch the full 50 km once; the radius dropdown then filters instantly.
   const { data, loading, error, refetch, setData } = useQuery(
-    () => api.listPosts({ center: radar.coords, radiusKm: 5, sort: 'latest' }, user?.id),
+    () => api.listPosts({ center: radar.coords, radiusKm: MAX_RADIUS_KM, sort: 'latest' }, user?.id),
     [api, radar.coords.lat, radar.coords.lng, user?.id],
     { scopes: ['posts', 'bookmarks'] }
   );
@@ -54,7 +59,7 @@ export function SearchScreen() {
 
   return (
     <>
-      <PageHeader title="Explore" subtitle="Search everything within 5 km — jobs, rentals, services, deals and more." />
+      <PageHeader title="Explore" subtitle="Search jobs, rentals, services, deals and more — in any city, up to 50 km around you." />
       <PageBody>
         <form
           onSubmit={(e) => {
@@ -82,12 +87,11 @@ export function SearchScreen() {
         </form>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Segmented
-            size="sm"
-            value={String(radius) as '1' | '2' | '3' | '4' | '5'}
-            onChange={(v) => setRadius(Number(v))}
-            options={['1', '2', '3', '4', '5'].map((k) => ({ value: k as '1', label: `${k} km` }))}
-          />
+          <button type="button" onClick={() => setAreaOpen(true)} className="chip-off max-w-[16rem]" title="Change city or country">
+            <MapPin className="h-4 w-4 shrink-0 text-primary-600" />
+            <span className="truncate">{radar.areaLabel}</span>
+          </button>
+          <RadiusSelect value={radius} onChange={setRadius} />
           <Segmented
             size="sm"
             value={sort}
@@ -182,6 +186,7 @@ export function SearchScreen() {
           </div>
         )}
       </PageBody>
+      <AreaSheet open={areaOpen} onClose={() => setAreaOpen(false)} />
     </>
   );
 }

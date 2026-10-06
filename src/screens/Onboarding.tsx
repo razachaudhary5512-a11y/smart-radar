@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Bell, Check, Crosshair, HeartHandshake, Loader2, ShieldCheck, Tag } from 'lucide-react';
+import { ArrowRight, Bell, Building2, Check, Crosshair, Globe2, HeartHandshake, Loader2, ShieldCheck, Tag } from 'lucide-react';
+import { CityPicker, RadiusPicker } from '@/components/radar/Pickers';
 import { LogoMark } from '@/components/layout/Logo';
 import { markOnboarded } from '@/components/layout/AppShell';
 import { RadarScope } from '@/components/RadarScope';
@@ -23,6 +24,7 @@ export function Onboarding() {
   const [step, setStep] = useState(0);
   const [pinned, setPinned] = useLocalStorage<string[]>('sr_pinned', ['urgent_blood', 'local_event', 'home_services', 'second_hand']);
   const [radius, setRadius] = useState(radar.radiusKm);
+  const [cityOpen, setCityOpen] = useState(false);
 
   const finish = () => {
     setPinned(pinned); // persist the defaults even if the user never toggled one
@@ -56,7 +58,7 @@ export function Onboarding() {
             ))}
           </div>
           <p className="relative mt-8 text-center text-2xl font-extrabold tracking-tight lg:text-[28px]">Your Neighbourhood, One App</p>
-          <p className="relative mt-2 max-w-xs text-center text-sm text-white/75">Everything happening within 1–5 km of you — in one place.</p>
+          <p className="relative mt-2 max-w-xs text-center text-sm text-white/75">Everything happening within 1–50 km of you — in one place.</p>
         </div>
 
         {/* Steps */}
@@ -89,8 +91,8 @@ export function Onboarding() {
 
           {step === 1 && (
             <div className="flex-1 animate-fade-in">
-              <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-ink">Where’s your neighbourhood?</h1>
-              <p className="mt-2 text-[15px] text-ink-2">We use your location only to show posts nearby. Your exact position is never shown to others.</p>
+              <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-ink">Where should your radar look?</h1>
+              <p className="mt-2 text-[15px] text-ink-2">Use your location, or pick any city or country. Your exact position is never shown to others.</p>
               <button
                 onClick={radar.requestLocation}
                 disabled={radar.gpsStatus === 'locating' || radar.gpsStatus === 'granted'}
@@ -126,18 +128,49 @@ export function Onboarding() {
                   </p>
                 </div>
               </button>
-              {radar.gpsStatus === 'denied' && (
-                <p className="mt-3 text-sm text-ink-2">No problem — you can pick any neighbourhood from the feed later. We’ll start with Karachi.</p>
-              )}
-              <div className="mt-7">
-                <p className="label">Scan radius</p>
-                <div className="grid grid-cols-5 gap-2">
-                  {[1, 2, 3, 4, 5].map((k) => (
-                    <button key={k} onClick={() => setRadius(k)} className={cn('h-12 rounded-xl border text-sm font-bold transition', radius === k ? 'border-primary-600 bg-primary-600 text-white' : 'border-line text-ink-2 hover:border-ink-3')}>
-                      {k} km
-                    </button>
-                  ))}
+              {radar.gpsStatus === 'denied' && <p className="mt-3 text-sm text-ink-2">No problem — choose your city or country below instead.</p>}
+
+              <div className="my-5 flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-ink-3">
+                <span className="h-px flex-1 bg-line" /> or choose a city / country <span className="h-px flex-1 bg-line" />
+              </div>
+
+              {radar.area.kind === 'city' && !cityOpen ? (
+                <button
+                  onClick={() => setCityOpen(true)}
+                  className="flex w-full items-center gap-4 rounded-2xl border border-success-500 bg-success-500/5 p-4 text-left"
+                >
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success-600 text-white">
+                    <Building2 className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-ink">{radar.area.label}</p>
+                    <p className="text-sm text-ink-2">Tap to change</p>
+                  </div>
+                </button>
+              ) : cityOpen ? (
+                <div className="rounded-2xl border border-line p-4">
+                  <CityPicker
+                    onPick={(p) => {
+                      radar.selectArea({ lat: p.lat, lng: p.lng }, { kind: 'city', label: p.label, city: p.city, country: p.country, countryCode: p.countryCode });
+                      setCityOpen(false);
+                    }}
+                  />
                 </div>
+              ) : (
+                <button onClick={() => setCityOpen(true)} className="flex w-full items-center gap-4 rounded-2xl border border-line p-4 text-left transition hover:border-primary-500">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-2 text-primary-600">
+                    <Globe2 className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-bold text-ink">Choose city or country</p>
+                    <p className="text-sm text-ink-2">Pakistan, UAE, Saudi Arabia, UK, USA and more</p>
+                  </div>
+                </button>
+              )}
+
+              <div className="mt-7">
+                <p className="label">How far should your radar scan?</p>
+                <RadiusPicker value={radius} onChange={setRadius} compact />
               </div>
             </div>
           )}

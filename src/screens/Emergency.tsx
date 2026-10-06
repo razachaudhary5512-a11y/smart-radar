@@ -39,7 +39,7 @@ export function Emergency() {
   const contacts = useQuery(() => api.listEmergencyContacts(), [api], { scopes: ['emergency'] });
   const trusted = useQuery(() => (user ? api.listTrustedContacts(user.id) : Promise.resolve([])), [api, user?.id], { scopes: ['trusted'] });
   const alerts = useQuery(
-    () => api.listPosts({ center: radar.coords, radiusKm: 5, sort: 'nearest' }, user?.id),
+    () => api.listPosts({ center: radar.coords, radiusKm: Math.max(5, radar.radiusKm), sort: 'nearest' }, user?.id),
     [api, radar.coords.lat, radar.coords.lng, user?.id]
   );
   const urgent = (alerts.data ?? []).filter((p) => getCategory(p.category).isUrgent);
@@ -110,7 +110,7 @@ export function Emergency() {
             {/* Urgent nearby */}
             <section>
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-[17px] font-bold tracking-tight text-ink">Urgent alerts within 5 km</h2>
+                <h2 className="text-[17px] font-bold tracking-tight text-ink">Urgent alerts within {Math.max(5, radar.radiusKm)} km</h2>
                 <Link to="/create?category=urgent_blood" className="text-[13px] font-semibold text-primary-600">
                   Request blood
                 </Link>

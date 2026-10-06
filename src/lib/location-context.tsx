@@ -3,6 +3,7 @@ import { DEFAULT_COORDS, getBrowserLocation } from './location';
 import { useAuth } from './auth';
 import { useAppSettings } from './settings';
 import { reverseGeocode } from '@/services/maps';
+import { clampRadius } from './places';
 import type { Coords } from './types';
 
 /** Where the radar is currently centred. */
@@ -10,7 +11,8 @@ export type AreaSource =
   | { kind: 'gps' }
   | { kind: 'saved'; label: string }
   | { kind: 'watched'; id: string; label: string }
-  | { kind: 'custom'; label: string };
+  | { kind: 'custom'; label: string; countryCode?: string }
+  | { kind: 'city'; label: string; city: string; country: string; countryCode: string };
 
 interface LocationContextValue {
   /** Centre of the radar (GPS or a chosen area). */
@@ -23,6 +25,8 @@ interface LocationContextValue {
   area: AreaSource;
   radiusKm: number;
   setRadiusKm(km: number): void;
+  /** Country used to scope place search (ISO code, e.g. "pk"). */
+  countryCode: string;
   requestLocation(): Promise<void>;
   selectArea(coords: Coords, area: AreaSource): void;
   selectGps(): void;
@@ -31,6 +35,27 @@ interface LocationContextValue {
 const LocationContext = createContext<LocationContextValue | undefined>(undefined);
 const RADIUS_KEY = 'sr_radius_km';
 const LAST_KEY = 'sr_last_coords';
+const AREA_KEY = 'sr_area_v1';
+
+type StoredArea = { area: Exclude<AreaSource, { kind: 'gps' }>; coords: Coords };
+
+function readArea(): StoredArea | null {
+  try {
+    const raw = localStorage.getItem(AREA_KEY);
+    return raw ? (JSON.parse(raw) as StoredArea) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeArea(v: StoredArea | null) {
+  try {
+    if (v) localStorage.setItem(AREA_KEY, JSON.stringify(v));
+    else localStorage.removeItem(AREA_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 function readNumber(key: string, fallback: number) {
   try {
@@ -55,10 +80,11 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [gpsCoords, setGpsCoords] = useState<Coords | null>(readLast);
   const [gpsStatus, setGpsStatus] = useState<LocationContextValue['gpsStatus']>('idle');
   const [gpsError, setGpsError] = useState<string | null>(null);
-  const [area, setArea] = useState<AreaSource>({ kind: 'gps' });
-  const [areaCoords, setAreaCoords] = useState<Coords | null>(null);
+  // The chosen city/area is remembered between visits.
+  const [area, setArea] = useState<AreaSource>(() => readArea()?.area ?? { kind: 'gps' });
+  const [areaCoords, setAreaCoords] = useState<Coords | null>(() => readArea()?.coords ?? null);
   const [gpsLabel, setGpsLabel] = useState<string>('');
-  const [radius, setRadius] = useState(() => readNumber(RADIUS_KEY, 3));
+  const [radius, setRadius] = useState(() => clampRadius(readNumber(RADIUS_KEY, 3)));
   const [hasOwnRadius] = useState(() => {
     try {
       return localStorage.getItem(RADIUS_KEY) !== null;
@@ -69,9 +95,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const { default_radius_km } = useAppSettings();
 
   useEffect(() => {
-    if (profile?.radius_km) setRadius(profile.radius_km);
+    if (profile?.radius_km) setRadius(clampRadius(profile.radius_km));
     // New visitors start with the owner's default radius.
-    else if (!hasOwnRadius) setRadius(default_radius_km);
+    else if (!hasOwnRadius) setRadius(clampRadius(default_radius_km));
   }, [profile?.radius_km, hasOwnRadius, default_radius_km]);
 
   const requestLocation = useCallback(async () => {
@@ -119,7 +145,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
 
   const setRadiusKm = useCallback(
     (km: number) => {
-      const v = Math.min(5, Math.max(1, Math.round(km)));
+      const v = clampRadius(km);
       setRadius(v);
       try {
         localStorage.setItem(RADIUS_KEY, String(v));
@@ -138,6 +164,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           ? gpsLabel || 'Your location'
           : 'Karachi (default)'
         : area.label;
+    const countryCode = area.kind === 'city' ? area.countryCode : area.kind === 'custom' && area.countryCode ? area.countryCode : 'pk';
     return {
       coords: center,
       gpsCoords,
@@ -147,14 +174,17 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       area,
       radiusKm: radius,
       setRadiusKm,
+      countryCode,
       requestLocation,
       selectArea: (c, a) => {
         setAreaCoords(c);
         setArea(a);
+        if (a.kind !== 'gps') writeArea({ area: a, coords: c });
       },
       selectGps: () => {
         setArea({ kind: 'gps' });
         setAreaCoords(null);
+        writeArea(null);
         if (!gpsCoords) requestLocation();
       },
     };
