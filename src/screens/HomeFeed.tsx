@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CalendarDays,
   ChevronDown,
+  Crown,
   Clock,
   Flame,
   LocateFixed,
@@ -41,7 +42,7 @@ const MAX_RADIUS = MAX_RADIUS_KM; // fetch once at the max; radius changes then 
 
 export function HomeFeed() {
   const api = useApi();
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin, isOwner } = useAuth();
   const radar = useRadar();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -114,6 +115,11 @@ export function HomeFeed() {
               </p>
             </div>
           </button>
+          {isAdmin && (
+            <Link to="/admin/dashboard" className="icon-btn text-amber-500" aria-label={isOwner ? 'Owner Console' : 'Admin Console'}>
+              {isOwner ? <Crown className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+            </Link>
+          )}
           <Link to="/search" className="icon-btn" aria-label="Search">
             <Search className="h-5 w-5" />
           </Link>
@@ -126,6 +132,7 @@ export function HomeFeed() {
       <div className="mx-auto grid grid-cols-1 max-w-[1180px] gap-8 px-4 pt-4 lg:grid-cols-[minmax(0,1fr)_330px] lg:px-8 lg:pt-8">
         <div className="min-w-0">
           <DemoNotice />
+          <ConsoleStrip />
 
           {/* Hero */}
           <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-600 via-primary-700 to-[#131a4a] p-5 text-white shadow-lift lg:p-7">
@@ -452,6 +459,32 @@ function TrendingCard({ posts }: { posts: PostWithRelations[] }) {
         <ShieldCheck className="h-4 w-4 shrink-0 text-success-600" /> Posts with 3+ reports are hidden automatically.
       </p>
     </div>
+  );
+}
+
+/** Shown to the owner/admins on the feed: one tap to the management console. */
+function ConsoleStrip() {
+  const { isAdmin, isOwner } = useAuth();
+  if (!isAdmin) return null;
+  return (
+    <Link
+      to="/admin/dashboard"
+      className="mb-4 flex items-center gap-3 rounded-2xl border border-amber-400/50 bg-amber-400/10 p-3.5 transition hover:bg-amber-400/20"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-400 text-[#3a2600]">
+        {isOwner ? <Crown className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-ink">{isOwner ? 'You’re the owner of Smart Radar' : 'You’re an admin'}</p>
+        <p className="text-[13px] text-ink-2">
+          {isOwner ? 'Manage every user, post, admin and app setting.' : 'Moderate posts, users and verifications.'} This page is the normal user view.
+        </p>
+      </div>
+      <span className="hidden shrink-0 items-center gap-1 text-sm font-bold text-amber-700 dark:text-amber-300 sm:flex">
+        Open {isOwner ? 'Owner' : 'Admin'} Console <ArrowRight className="h-4 w-4" />
+      </span>
+      <ArrowRight className="h-5 w-5 shrink-0 text-amber-600 sm:hidden" />
+    </Link>
   );
 }
 

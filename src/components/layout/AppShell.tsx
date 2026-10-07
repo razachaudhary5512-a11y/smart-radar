@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import {
   Ban,
   Briefcase,
+  Crown,
   CarFront,
   Droplet,
   Home,
@@ -66,6 +67,25 @@ export function AppShell() {
       <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
       <NamePrompt />
     </div>
+  );
+}
+
+/** Big, unmissable entry to the Owner / Admin console (only for those roles). */
+export function ConsoleButton({ className }: { className?: string }) {
+  const { isAdmin, isOwner } = useAuth();
+  if (!isAdmin) return null;
+  return (
+    <Link
+      to="/admin/dashboard"
+      className={cn(
+        'btn w-full',
+        isOwner ? 'bg-amber-400 text-[#3a2600] shadow-[0_8px_24px_-8px_rgba(245,158,11,0.7)] hover:bg-amber-300' : 'bg-ink text-bg hover:opacity-90',
+        className
+      )}
+    >
+      {isOwner ? <Crown className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+      {isOwner ? 'Owner Console' : 'Admin Console'}
+    </Link>
   );
 }
 
@@ -173,7 +193,7 @@ function SideLink({ item }: { item: NavItem }) {
 }
 
 function Sidebar() {
-  const { user, profile, isAdmin, requireAuth, signOut } = useAuth();
+  const { user, profile, requireAuth, signOut } = useAuth();
   const { resolved, toggle } = useTheme();
   const { demoReason } = useBackend();
   const navigate = useNavigate();
@@ -183,10 +203,11 @@ function Sidebar() {
       <div className="flex h-[72px] items-center px-5">
         <Logo />
       </div>
-      <div className="px-4">
+      <div className="space-y-2 px-4">
         <Link to="/create" className="btn-primary w-full">
           <Plus className="h-5 w-5" /> New post
         </Link>
+        <ConsoleButton />
       </div>
       <nav className="mt-5 flex-1 space-y-6 overflow-y-auto px-3 no-scrollbar" aria-label="Main">
         <div className="space-y-0.5">
@@ -200,7 +221,6 @@ function Sidebar() {
             {PERSONAL_NAV.map((i) => (
               <SideLink key={i.to} item={i} />
             ))}
-            {isAdmin && <SideLink item={{ to: '/admin/dashboard', label: 'Admin Console', icon: ShieldCheck }} />}
           </div>
         </div>
         <QuickPostLinks />
@@ -317,13 +337,14 @@ function BottomNav({ onMore }: { onMore(): void }) {
 }
 
 function MoreSheet({ open, onClose }: { open: boolean; onClose(): void }) {
-  const { user, profile, isAdmin, requireAuth, signOut } = useAuth();
+  const { user, profile, requireAuth, signOut } = useAuth();
   const { resolved, toggle } = useTheme();
   const { demoReason } = useBackend();
   const links: NavItem[] = [...PRIMARY_NAV.slice(2), ...PERSONAL_NAV];
 
   return (
     <Sheet open={open} onClose={onClose} title="More" size="sm">
+      <ConsoleButton className="mb-4 h-12" />
       {user && profile ? (
         <Link to="/profile" className="mb-4 flex items-center gap-3 rounded-2xl bg-surface-2 p-3">
           <Avatar name={profile.display_name || 'You'} src={profile.avatar_url} size={44} />
@@ -365,11 +386,6 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose(): void }) {
             {l.label}
           </Link>
         ))}
-        {isAdmin && (
-          <Link to="/admin/dashboard" className="flex h-12 items-center gap-3 px-4 text-[14px] font-semibold text-ink hover:bg-surface-2">
-            <ShieldCheck className="h-5 w-5 text-ink-3" /> Admin Console
-          </Link>
-        )}
         <button onClick={toggle} className="flex h-12 w-full items-center gap-3 px-4 text-[14px] font-semibold text-ink hover:bg-surface-2">
           {resolved === 'dark' ? <Sun className="h-5 w-5 text-ink-3" /> : <Moon className="h-5 w-5 text-ink-3" />}
           {resolved === 'dark' ? 'Light mode' : 'Dark mode'}
