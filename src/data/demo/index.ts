@@ -364,6 +364,22 @@ const auth: AuthApi = {
   async signOut() {
     setSession(null);
   },
+  async deleteMyAccount() {
+    const d = ensure();
+    const me = await auth.getSession();
+    if (!me) return { error: 'Please sign in again.' };
+    const u = d.users.find((x) => x.id === me.id);
+    if (u?.is_owner) return { error: 'The owner account cannot be deleted from the app' };
+    d.users = d.users.filter((x) => x.id !== me.id);
+    const gone = new Set(d.posts.filter((p) => p.user_id === me.id).map((p) => p.id));
+    d.posts = d.posts.filter((p) => !gone.has(p.id));
+    d.comments = d.comments.filter((c) => c.user_id !== me.id && !gone.has(c.post_id));
+    d.votes = d.votes.filter((v) => v.user_id !== me.id);
+    d.bookmarks = d.bookmarks.filter((b) => b.user_id !== me.id);
+    save();
+    setSession(null);
+    return { error: null };
+  },
   async getProfile(userId) {
     const d = ensure();
     const u = d.users.find((x) => x.id === userId);

@@ -5,6 +5,7 @@ import { LogoMark } from '@/components/layout/Logo';
 import { useAuth } from '@/lib/auth';
 import { useBackend } from '@/data';
 import { loadDemoSeed } from '@/data/demo-loader';
+import { Turnstile, captchaEnabled } from '@/components/Turnstile';
 type DemoCreds = { ownerEmail: string; ownerPassword: string; adminEmail: string; adminPassword: string };
 
 export function AdminLogin() {
@@ -26,6 +27,8 @@ export function AdminLogin() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   useEffect(() => {
     if (isAdmin) navigate(from, { replace: true });
@@ -33,9 +36,11 @@ export function AdminLogin() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (captchaEnabled && !captcha) return setError('Please wait a moment for the security check, then try again.');
     setBusy(true);
     setError(null);
-    const res = await adminSignIn(email.trim(), password);
+    const res = await adminSignIn(email.trim(), password, captcha ?? undefined);
+    setCaptchaReset((n) => n + 1);
     setBusy(false);
     if (res.error) setError(res.error);
   }
@@ -157,6 +162,7 @@ export function AdminLogin() {
               </div>
             </div>
             {error && <p className="rounded-xl bg-danger-50 px-3.5 py-2.5 text-sm font-medium text-danger-700 dark:bg-danger-500/10 dark:text-danger-400">{error}</p>}
+            <Turnstile onToken={setCaptcha} resetKey={captchaReset} className="flex justify-center" />
             <button className="btn-primary w-full" disabled={busy}>
               <Lock className="h-4 w-4" /> {busy ? 'Signing in…' : 'Sign in'}
             </button>

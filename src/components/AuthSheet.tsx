@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ArrowLeft, Lock, Mail, MessageSquareText, Phone, ShieldCheck } from 'lucide-react';
 import { Segmented, Sheet, useToast } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -6,6 +7,7 @@ import { useApi } from '@/data';
 import { toE164PK } from '@/lib/format';
 import { useLocalStorage } from '@/lib/hooks';
 import { ENV } from '@/config/env';
+import { Turnstile, captchaEnabled } from '@/components/Turnstile';
 
 type Step = 'start' | 'code' | 'name';
 type Method = 'phone' | 'email';
@@ -31,6 +33,8 @@ export function AuthSheet() {
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const codeRef = useRef<HTMLInputElement>(null);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   useEffect(() => {
     if (authPrompt.open) {
@@ -57,9 +61,12 @@ export function AuthSheet() {
       to = email.trim().toLowerCase();
       if (!EMAIL_RE.test(to)) return setError('Enter a valid email address.');
     }
+    if (captchaEnabled && !captcha) return setError('Please wait a moment while we check you’re not a robot, then try again.');
     setBusy(true);
     setError(null);
-    const res = method === 'phone' ? await sendOtp(to) : await sendEmailOtp(to);
+    const token = captcha ?? undefined;
+    const res = method === 'phone' ? await sendOtp(to, token) : await sendEmailOtp(to, token);
+    setCaptchaReset((n) => n + 1); // tokens are single-use
     setBusy(false);
     if (res.error) return setError(res.error);
     setTarget(to);
@@ -239,6 +246,12 @@ export function AuthSheet() {
             </button>
           </form>
         )}
+        {step !== 'name' && <Turnstile onToken={setCaptcha} resetKey={captchaReset} className="mt-4 flex justify-center" />}
+        <p className="mt-5 text-center text-xs text-ink-3">
+          By continuing you agree to our{' '}
+          <Link to="/terms" onClick={() => closeAuthPrompt(false)} className="font-semibold underline">Terms</Link> and{' '}
+          <Link to="/privacy" onClick={() => closeAuthPrompt(false)} className="font-semibold underline">Privacy Policy</Link>.
+        </p>
       </div>
     </Sheet>
   );

@@ -26,6 +26,8 @@ const Profile = named(() => import('@/screens/Profile'), 'Profile');
 const Emergency = named(() => import('@/screens/Emergency'), 'Emergency');
 const Onboarding = named(() => import('@/screens/Onboarding'), 'Onboarding');
 const NotFound = named(() => import('@/screens/NotFound'), 'NotFound');
+const PrivacyPolicy = named(() => import('@/screens/Legal'), 'PrivacyPolicy');
+const TermsOfUse = named(() => import('@/screens/Legal'), 'TermsOfUse');
 const AdminLogin = named(() => import('@/screens/admin/AdminLogin'), 'AdminLogin');
 const AdminDashboard = named(() => import('@/screens/admin/AdminDashboard'), 'AdminDashboard');
 
@@ -121,6 +123,8 @@ export default function App() {
                       <Route path="saved" element={<Saved />} />
                       <Route path="profile" element={<Profile />} />
                       <Route path="emergency" element={<Emergency />} />
+                      <Route path="privacy" element={<PrivacyPolicy />} />
+                      <Route path="terms" element={<TermsOfUse />} />
                       <Route path="*" element={<NotFound />} />
                     </Route>
                   </Routes>

@@ -37,13 +37,15 @@ export interface AuthApi {
   getSession(): Promise<SessionUser | null>;
   onChange(cb: (user: SessionUser | null) => void): () => void;
   /** `devCode` is only returned in demo mode so the flow can be tried without SMS. */
-  sendOtp(phoneE164: string): Promise<{ error: string | null; devCode?: string }>;
+  sendOtp(phoneE164: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
   verifyOtp(phoneE164: string, code: string): Promise<{ error: string | null }>;
   /** Email one-time code (free alternative to SMS). */
-  sendEmailOtp(email: string): Promise<{ error: string | null; devCode?: string }>;
+  sendEmailOtp(email: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
   verifyEmailOtp(email: string, code: string): Promise<{ error: string | null }>;
-  adminSignIn(email: string, password: string): Promise<{ error: string | null }>;
+  adminSignIn(email: string, password: string, captchaToken?: string): Promise<{ error: string | null }>;
   signOut(): Promise<void>;
+  /** Permanently deletes the signed-in user's account and everything they posted. */
+  deleteMyAccount(): Promise<{ error: string | null }>;
   getProfile(userId: string): Promise<Profile | null>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<void>;
   submitVerification(userId: string, cnic: string, isBusiness: boolean): Promise<void>;

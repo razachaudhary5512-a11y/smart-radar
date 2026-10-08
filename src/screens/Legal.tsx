@@ -1,0 +1,183 @@
+import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { PageBody, PageHeader } from '@/components/layout/Page';
+
+const UPDATED = '8 October 2026';
+/** Public support address shown on the legal pages (set VITE_SUPPORT_EMAIL at build time). */
+const SUPPORT_EMAIL = (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined)?.trim() || '';
+
+function Doc({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <>
+      <PageHeader title={title} subtitle={`Last updated ${UPDATED}`} back="/" />
+      <PageBody narrow className="pb-16">
+        <article className="card space-y-5 p-5 text-[15px] leading-relaxed text-ink-2 lg:p-8 [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-ink [&_li]:ml-5 [&_li]:list-disc [&_ul]:space-y-1">
+          {children}
+        </article>
+      </PageBody>
+    </>
+  );
+}
+
+function Contact() {
+  return SUPPORT_EMAIL ? (
+    <p>
+      Questions or requests: <a className="font-semibold text-primary-600 underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+    </p>
+  ) : (
+    <p>Questions or requests: use “Report” on any post, or contact the Smart Radar team through the app.</p>
+  );
+}
+
+export function PrivacyPolicy() {
+  return (
+    <Doc title="Privacy Policy">
+      <p>
+        Smart Radar (“we”, “the app”) is a neighbourhood app that shows posts, alerts and services near you. This policy explains what we collect, why, and the
+        choices you have. We do <strong>not</strong> sell your data and we do <strong>not</strong> show third-party ads.
+      </p>
+
+      <section>
+        <h2>What we collect</h2>
+        <ul>
+          <li><strong>Account:</strong> your email address (used to sign in with a one-time link or code) and the display name you choose.</li>
+          <li><strong>Location:</strong> with your permission, your device location is used to show posts within the radius you pick (1–50 km) and to place
+            posts you create on the map. You can instead choose a city manually. We do not track your location in the background.</li>
+          <li><strong>Content you post:</strong> posts, photos, comments, votes, RSVPs, bookmarks and business listings.</li>
+          <li><strong>Verification (optional):</strong> if you request a verified badge, your CNIC number. It is visible only to the app owner and admins for
+            checking, never to other users.</li>
+          <li><strong>Safety & moderation:</strong> reports you make, and actions taken by admins, are logged to keep the community safe.</li>
+          <li><strong>Notifications (optional):</strong> a device token, only if you turn notifications on.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>How we use it</h2>
+        <ul>
+          <li>To run the app: sign you in, show nearby posts, and let neighbours see what you share.</li>
+          <li>To keep the community safe: moderate reported content and suspend abusive accounts.</li>
+          <li>To improve reliability and fix problems.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>What other people can see</h2>
+        <p>
+          Your display name, profile picture, trust score, verified badge and the posts you publish are visible to other users. Your email address, phone
+          number and CNIC are never shown to other users.
+        </p>
+      </section>
+
+      <section>
+        <h2>Services we use</h2>
+        <ul>
+          <li><strong>Supabase</strong> — secure database, file storage and sign-in.</li>
+          <li><strong>OpenStreetMap / Nominatim</strong> — maps and city search (your search text is sent to look up places).</li>
+          <li><strong>Firebase Cloud Messaging</strong> — push notifications, only if enabled.</li>
+          <li><strong>GitHub Pages</strong> — hosting of the website version.</li>
+        </ul>
+        <p>Data is sent over encrypted connections (HTTPS). Access to the database is restricted by row-level security rules.</p>
+      </section>
+
+      <section>
+        <h2>Your choices and rights</h2>
+        <ul>
+          <li><strong>Download your data:</strong> Profile → Privacy &amp; data → Export.</li>
+          <li><strong>Delete your account:</strong> Profile → Privacy &amp; data → Delete my account. This permanently removes your account, posts, comments,
+            photos and listings straight away.</li>
+          <li>You can turn off location permission and notifications at any time in your phone settings.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Data retention</h2>
+        <p>
+          We keep your data while your account exists. When you delete your account, your personal data and content are deleted. Records of admin
+          moderation actions are kept without your personal details.
+        </p>
+      </section>
+
+      <section>
+        <h2>Children</h2>
+        <p>Smart Radar is not intended for children under 13, and we do not knowingly collect their data.</p>
+      </section>
+
+      <section>
+        <h2>Changes</h2>
+        <p>If we change this policy we will update the date above and, for important changes, tell you in the app.</p>
+        <Contact />
+      </section>
+      <p className="text-sm">
+        See also our <Link to="/terms" className="font-semibold text-primary-600 underline">Terms of Use</Link>.
+      </p>
+    </Doc>
+  );
+}
+
+export function TermsOfUse() {
+  return (
+    <Doc title="Terms of Use">
+      <p>By using Smart Radar you agree to these terms. If you do not agree, please do not use the app.</p>
+
+      <section>
+        <h2>Your account</h2>
+        <ul>
+          <li>You must be at least 13 years old.</li>
+          <li>Use your own email and keep access to it secure. You are responsible for activity on your account.</li>
+          <li>Verified badges are given after checks and can be removed if information turns out to be false.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>What you may not post</h2>
+        <ul>
+          <li>False alerts, scams, spam or misleading offers.</li>
+          <li>Harassment, hate speech, threats, or content that targets a person.</li>
+          <li>Other people’s private information (phone numbers, addresses, ID documents) without their consent.</li>
+          <li>Sexual, violent or illegal content, or anything that breaks the law of your country.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Moderation</h2>
+        <p>
+          The Smart Radar team may hide or remove content and suspend or remove accounts that break these terms or put others at risk, with or without
+          notice. You can report any post you think breaks the rules.
+        </p>
+      </section>
+
+      <section>
+        <h2>Emergencies</h2>
+        <p>
+          Smart Radar is not an emergency service. In an emergency, always call your local emergency number first. Information posted by users may be
+          wrong or out of date.
+        </p>
+      </section>
+
+      <section>
+        <h2>Your content</h2>
+        <p>
+          You own what you post. By posting, you allow Smart Radar to display it to other users of the app. You can delete your posts or your whole account
+          at any time.
+        </p>
+      </section>
+
+      <section>
+        <h2>Deals between users</h2>
+        <p>
+          Listings, rides, help offers and sales are between users. Smart Radar is not a party to these arrangements and is not responsible for them.
+          Meet in safe places and use your judgement.
+        </p>
+      </section>
+
+      <section>
+        <h2>Changes and contact</h2>
+        <p>We may update these terms; continuing to use the app means you accept the updated terms.</p>
+        <Contact />
+      </section>
+      <p className="text-sm">
+        See also our <Link to="/privacy" className="font-semibold text-primary-600 underline">Privacy Policy</Link>.
+      </p>
+    </Doc>
+  );
+}

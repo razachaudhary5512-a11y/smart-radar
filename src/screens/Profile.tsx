@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Bell,
   BadgeCheck,
@@ -710,6 +711,24 @@ function PrivacySection({ profile }: { profile: ProfileT }) {
   const save = useSave();
   const toast = useToast();
   const [resetOpen, setResetOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteText, setDeleteText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const { deleteMyAccount } = useAuth();
+  const navigate = useNavigate();
+
+  async function confirmDelete() {
+    setDeleting(true);
+    const { error } = await deleteMyAccount();
+    setDeleting(false);
+    if (error) {
+      toast.error('Could not delete account', error);
+      return;
+    }
+    setDeleteOpen(false);
+    toast.success('Your account has been deleted');
+    navigate('/', { replace: true });
+  }
 
   async function exportData() {
     try {
@@ -758,6 +777,19 @@ function PrivacySection({ profile }: { profile: ProfileT }) {
             Unblock all
           </button>
         </Row>
+        <Row title="Privacy Policy & Terms" body="How Smart Radar uses and protects your data.">
+          <div className="flex gap-2">
+            <Link to="/privacy" className="btn-secondary btn-sm">Privacy</Link>
+            <Link to="/terms" className="btn-secondary btn-sm">Terms</Link>
+          </div>
+        </Row>
+        {!profile.is_owner && (
+          <Row title="Delete my account" body="Permanently deletes your account, posts, comments, photos and listings. This cannot be undone.">
+            <button className="btn-secondary btn-sm text-danger-600" onClick={() => { setDeleteText(''); setDeleteOpen(true); }}>
+              <Trash2 className="h-4 w-4" /> Delete
+            </button>
+          </Row>
+        )}
         {demoReason && (
           <Row title="Reset demo data" body="Deletes all demo posts, sign-ins and settings stored in this browser.">
             <button className="btn-secondary btn-sm text-danger-600" onClick={() => setResetOpen(true)}>
@@ -766,6 +798,27 @@ function PrivacySection({ profile }: { profile: ProfileT }) {
           </Row>
         )}
       </div>
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete your account permanently?"
+        body="Your profile, posts, comments, photos, bookmarks and listings will be erased from Smart Radar. This cannot be undone."
+        confirmLabel="Delete forever"
+        tone="danger"
+        busy={deleting}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={() => {
+          if (deleteText.trim().toUpperCase() !== 'DELETE') {
+            toast.error('Type DELETE to confirm');
+            return;
+          }
+          void confirmDelete();
+        }}
+      >
+        <label className="block text-sm font-semibold text-ink-2">
+          Type <span className="font-bold text-danger-600">DELETE</span> to confirm
+          <input className="input mt-1.5" value={deleteText} onChange={(e) => setDeleteText(e.target.value)} autoComplete="off" placeholder="DELETE" />
+        </label>
+      </ConfirmDialog>
       <ConfirmDialog
         open={resetOpen}
         title="Reset all demo data?"

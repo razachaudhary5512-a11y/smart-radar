@@ -11,12 +11,13 @@ interface AuthContextValue {
   isAdmin: boolean;
   /** App owner (super-admin). */
   isOwner: boolean;
-  sendOtp(phoneE164: string): Promise<{ error: string | null; devCode?: string }>;
+  sendOtp(phoneE164: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
   verifyOtp(phoneE164: string, code: string): Promise<{ error: string | null }>;
-  sendEmailOtp(email: string): Promise<{ error: string | null; devCode?: string }>;
+  sendEmailOtp(email: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
   verifyEmailOtp(email: string, code: string): Promise<{ error: string | null }>;
-  adminSignIn(email: string, password: string): Promise<{ error: string | null }>;
+  adminSignIn(email: string, password: string, captchaToken?: string): Promise<{ error: string | null }>;
   signOut(): Promise<void>;
+  deleteMyAccount(): Promise<{ error: string | null }>;
   refreshProfile(): Promise<void>;
   updateProfile(patch: ProfilePatch): Promise<void>;
   /** Opens the sign-in sheet; resolves true once the user is signed in. */
@@ -112,15 +113,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       isAdmin: Boolean(user && (profile?.is_admin || profile?.is_owner)),
       isOwner: Boolean(user && profile?.is_owner),
-      sendOtp: (p) => api.auth.sendOtp(p),
+      sendOtp: (p, t) => api.auth.sendOtp(p, t),
       verifyOtp: (p, c) => api.auth.verifyOtp(p, c),
-      sendEmailOtp: (e) => api.auth.sendEmailOtp(e),
+      sendEmailOtp: (e, t) => api.auth.sendEmailOtp(e, t),
       verifyEmailOtp: (e, c) => api.auth.verifyEmailOtp(e, c),
-      adminSignIn: (e, pw) => api.auth.adminSignIn(e, pw),
+      adminSignIn: (e, pw, t) => api.auth.adminSignIn(e, pw, t),
       signOut: async () => {
         await api.auth.signOut();
         setUser(null);
         setProfile(null);
+      },
+      deleteMyAccount: async () => {
+        const res = await api.auth.deleteMyAccount();
+        if (!res.error) {
+          setUser(null);
+          setProfile(null);
+        }
+        return res;
       },
       refreshProfile: () => loadProfile(user),
       updateProfile,

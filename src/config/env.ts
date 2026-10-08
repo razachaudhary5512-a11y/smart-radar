@@ -40,6 +40,8 @@ export const ENV = {
     appId: str(env.VITE_FIREBASE_APP_ID),
     vapidKey: str(env.VITE_FIREBASE_VAPID_KEY),
   },
+  /** Cloudflare Turnstile site key (public). Set only after CAPTCHA is enabled in Supabase Auth. */
+  turnstileSiteKey: str(env.VITE_TURNSTILE_SITE_KEY),
   features: {
     /** Phone (SMS) sign-in. Set VITE_ENABLE_PHONE_AUTH=false until an SMS provider is connected in Supabase. */
     phoneAuth: str(env.VITE_ENABLE_PHONE_AUTH) !== 'false',

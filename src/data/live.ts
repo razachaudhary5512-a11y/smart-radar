@@ -108,26 +108,26 @@ const auth: AuthApi = {
     const { data } = sb().auth.onAuthStateChange((_e, s) => cb(toSession(s?.user)));
     return () => data.subscription.unsubscribe();
   },
-  async sendOtp(phone) {
+  async sendOtp(phone, captchaToken) {
     // Server-side rate limit (5 / hour / number). Fails open if the RPC is missing.
     const { data: allowed, error: rlError } = await sb().rpc('request_otp_slot', { p_phone: phone });
     if (!rlError && allowed === false) {
       return { error: 'Too many code requests for this number. Please try again in an hour.' };
     }
-    const { error } = await sb().auth.signInWithOtp({ phone });
+    const { error } = await sb().auth.signInWithOtp({ phone, options: { captchaToken } });
     return { error: error?.message ?? null };
   },
   async verifyOtp(phone, code) {
     const { error } = await sb().auth.verifyOtp({ phone, token: code, type: 'sms' });
     return { error: error?.message ?? null };
   },
-  async sendEmailOtp(email) {
+  async sendEmailOtp(email, captchaToken) {
     // Supabase emails a sign-in link (and a 6-digit code if the template includes {{ .Token }}).
     // The link brings the user back to the app, where the session is picked up automatically.
     const { error } = await sb().auth.signInWithOtp({
       email: email.trim(),
       // In the Android app the link must reopen the app, not the phone's browser.
-      options: { shouldCreateUser: true, emailRedirectTo: isNative ? APP_AUTH_CALLBACK : appUrl('') },
+      options: { shouldCreateUser: true, emailRedirectTo: isNative ? APP_AUTH_CALLBACK : appUrl(''), captchaToken },
     });
     return { error: error?.message ?? null };
   },
@@ -135,8 +135,8 @@ const auth: AuthApi = {
     const { error } = await sb().auth.verifyOtp({ email: email.trim(), token: code, type: 'email' });
     return { error: error?.message ?? null };
   },
-  async adminSignIn(email, password) {
-    const { data, error } = await sb().auth.signInWithPassword({ email, password });
+  async adminSignIn(email, password, captchaToken) {
+    const { data, error } = await sb().auth.signInWithPassword({ email, password, options: { captchaToken } });
     if (error) return { error: error.message };
     const { data: p } = await sb().from('profiles').select('is_admin').eq('id', data.user.id).maybeSingle();
     if (!p?.is_admin) {
@@ -147,6 +147,23 @@ const auth: AuthApi = {
   },
   async signOut() {
     await sb().auth.signOut();
+  },
+  async deleteMyAccount() {
+    const { data } = await sb().auth.getUser();
+    const userId = data.user?.id;
+    if (!userId) return { error: 'Please sign in again.' };
+    // Photos live in storage under "<userId>/…"; remove them first (storage is not covered by SQL cascades).
+    const bucket = sb().storage.from('post-images');
+    for (;;) {
+      const { data: files } = await bucket.list(userId, { limit: 100 });
+      if (!files?.length) break;
+      const { error } = await bucket.remove(files.map((f) => `${userId}/${f.name}`));
+      if (error) break;
+    }
+    const { error } = await sb().rpc('delete_my_account');
+    if (error) return { error: error.message };
+    await sb().auth.signOut();
+    return { error: null };
   },
   async getProfile(userId) {
     const { data, error } = await sb().from('profiles').select(PROFILE_COLUMNS).eq('id', userId).maybeSingle();

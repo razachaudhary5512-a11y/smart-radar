@@ -29,3 +29,6 @@ android/build/
 *.apk
 *.keystore
 .env.backup*
+*.jks
+*.aab
+keystore.properties
