@@ -1,7 +1,7 @@
 /*
   Smart Radar — Rebuild & hardening migration (2026-09-30)
   ============================================================
-  Run AFTER 20260822205833_create_smart_radar_schema.sql and
+  Run AFTER 20260822205833_create_be_alert_schema.sql and
   20260925_security_hardening.sql. Idempotent: safe to re-run.
 
   Fixes found during the rebuild audit:

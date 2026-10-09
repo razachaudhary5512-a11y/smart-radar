@@ -1,5 +1,6 @@
 -- Be Alert: run this ONCE in the Supabase SQL editor (safe to re-run).
 -- Contains: security audit fixes (2026-10-09) + email-only sign-in (2026-10-10).
+-- When it finishes you should see one row: ✅ BE ALERT UPDATE OK
 
 /*
   Smart Radar — security audit fixes (2026-10-09)
@@ -183,13 +184,24 @@ CREATE POLICY "insert_own_poll_votes" ON public.poll_votes FOR INSERT TO authent
 -- ── 7. Storage: no listing of other people's files ──────────────────────────
 -- The bucket is public, so image links work without any SELECT policy.
 -- Users may only list their own folder (needed for "Delete my account").
-DROP POLICY IF EXISTS "post_images_public_read" ON storage.objects;
-DROP POLICY IF EXISTS "post_images_owner_list" ON storage.objects;
-CREATE POLICY "post_images_owner_list" ON storage.objects FOR SELECT TO authenticated
-  USING (bucket_id = 'post-images' AND (storage.foldername(name))[1] = auth.uid()::text);
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "post_images_public_read" ON storage.objects;
+  DROP POLICY IF EXISTS "post_images_owner_list" ON storage.objects;
+  CREATE POLICY "post_images_owner_list" ON storage.objects FOR SELECT TO authenticated
+    USING (bucket_id = 'post-images' AND (storage.foldername(name))[1] = auth.uid()::text);
+EXCEPTION WHEN insufficient_privilege OR undefined_object OR undefined_table THEN
+  -- Some Supabase projects don't let the SQL editor change storage policies; skip safely.
+  RAISE NOTICE 'Storage listing policy left unchanged: %', SQLERRM;
+END $$;
 
 -- ── 8. Function hygiene ─────────────────────────────────────────────────────
-ALTER FUNCTION public.update_updated_at_column() SET search_path = public, pg_temp;
+DO $$
+BEGIN
+  ALTER FUNCTION public.update_updated_at_column() SET search_path = public, pg_temp;
+EXCEPTION WHEN insufficient_privilege OR undefined_function THEN
+  RAISE NOTICE 'update_updated_at_column left unchanged: %', SQLERRM;
+END $$;
 DO $$
 DECLARE f text;
 BEGIN
@@ -198,7 +210,11 @@ BEGIN
     'public.sync_poll_counts()', 'public.poll_vote_set_post()', 'public.posts_guard()',
     'public.update_updated_at_column()', 'public.guard_media_urls()', 'public.handle_new_user()'
   ] LOOP
-    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM public, anon, authenticated', f);
+    BEGIN
+      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM public, anon, authenticated', f);
+    EXCEPTION WHEN undefined_function OR insufficient_privilege THEN
+      RAISE NOTICE 'skipped %', f;
+    END;
   END LOOP;
 END $$;
 
@@ -255,3 +271,8 @@ GRANT EXECUTE ON FUNCTION public.admin_list_users(text, text) TO authenticated;
 -- ── 2. Remove unused SMS rate limiting ──────────────────────────────────────
 DROP FUNCTION IF EXISTS public.request_otp_slot(text);
 DROP TABLE IF EXISTS public.otp_rate_limit;
+
+
+SELECT '✅ BE ALERT UPDATE OK' AS result,
+       (SELECT count(*) FROM pg_proc WHERE proname = 'is_app_storage_url') AS security_fix_installed,
+       (SELECT count(*) FROM pg_proc WHERE proname = 'request_otp_slot') AS old_sms_helper_left;

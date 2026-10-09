@@ -1,8 +1,8 @@
 apply plugin: 'com.android.application'
 
 // Release signing key lives OUTSIDE the repo (never committed).
-// Path can be overridden with the SMART_RADAR_KEYSTORE_PROPS environment variable.
-def keystorePropsFile = file(System.getenv('SMART_RADAR_KEYSTORE_PROPS') ?: 'D:/Projects/Smart Radar/signing/keystore.properties')
+// Path can be overridden with the BE_ALERT_KEYSTORE_PROPS environment variable.
+def keystorePropsFile = file(System.getenv('BE_ALERT_KEYSTORE_PROPS') ?: 'D:/Projects/Be Alert/signing/keystore.properties')
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
     keystorePropsFile.withInputStream { keystoreProps.load(it) }
