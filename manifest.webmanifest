@@ -1,6 +1,6 @@
 {
-  "name": "Smart Radar — Your Neighborhood, One App",
-  "short_name": "Smart Radar",
+  "name": "Be Alert — Your Neighborhood, One App",
+  "short_name": "Be Alert",
   "description": "Everything happening within 1–5 km of you — alerts, deals, services, transport, and community.",
   "start_url": "./",
   "scope": "./",

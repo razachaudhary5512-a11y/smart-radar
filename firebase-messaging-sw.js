@@ -1,4 +1,4 @@
-/* Smart Radar — Firebase Cloud Messaging service worker.
+/* Be Alert — Firebase Cloud Messaging service worker.
  * Shows push notifications while the app is closed or in the background.
  * The (public) Firebase config is passed in the registration URL by
  * src/services/firebase.ts, so no keys are hard-coded here. */
@@ -22,7 +22,7 @@ if (config.apiKey && config.projectId && config.messagingSenderId && config.appI
 
   messaging.onBackgroundMessage((payload) => {
     const n = payload.notification || {};
-    self.registration.showNotification(n.title || 'Smart Radar', {
+    self.registration.showNotification(n.title || 'Be Alert', {
       body: n.body || 'Something new is happening near you.',
       icon: new URL('favicon.svg', self.registration.scope).href,
       badge: new URL('favicon.svg', self.registration.scope).href,
