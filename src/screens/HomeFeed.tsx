@@ -502,7 +502,7 @@ function DemoNotice() {
     <div className="mb-4 flex items-start gap-3 rounded-2xl border border-warning-500/30 bg-warning-50 p-3.5 text-[13px] text-warning-700 dark:bg-warning-500/10 dark:text-warning-500">
       <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
       <p className="flex-1">
-        <b>Demo mode.</b> <span className="hidden sm:inline">{why} </span>Everything works and is saved in this browser. Sign in with any number
+        <b>Demo mode.</b> <span className="hidden sm:inline">{why} </span>Everything works and is saved in this browser. Sign in with any email
         using code <b>123456</b>.
       </p>
       <button onClick={() => setDismissed(true)} aria-label="Dismiss" className="-m-1 rounded-lg p-1 hover:bg-warning-500/10">

@@ -84,7 +84,7 @@ export function CreatePost() {
   ) : (
     <>
       <PageHeader title="Create a post" back />
-      <RequireAuth icon={Plus} title="Share with your neighbourhood" body="Sign in with your phone or email to post alerts, listings, events and more.">
+      <RequireAuth icon={Plus} title="Share with your neighbourhood" body="Sign in with your email to post alerts, listings, events and more.">
         {null}
       </RequireAuth>
     </>
@@ -232,7 +232,7 @@ function Composer({ editId }: { editId: string | null }) {
           reposted_from_id: repostId,
           poll_options: cat.slug === 'community_poll' ? draft.pollOptions.map((o) => o.trim()).filter(Boolean) : undefined,
         });
-        toast.success(scheduled ? 'Post scheduled' : 'Your post is live! 🎉', scheduled ? 'It will appear in the feed at the scheduled time.' : `Visible to neighbours within ${cat.defaultRadiusKm} km.`);
+        toast.success(scheduled ? 'Post scheduled' : 'Your post is live! 🎉', scheduled ? 'It will appear in the feed at the scheduled time.' : 'Neighbours around you can see it now.');
         navigate(`/post/${created.id}`, { replace: true });
       }
     } catch (e) {
@@ -461,7 +461,7 @@ function Composer({ editId }: { editId: string | null }) {
                 <div className="flex items-center gap-3 p-4 text-[13px] text-ink-2">
                   <ShieldCheck className="h-5 w-5 shrink-0 text-success-600" />
                   <span>
-                    {formatExpiryRule(cat.autoExpireMinutes)}. Visible to neighbours within about {cat.defaultRadiusKm} km. Your phone number stays private.
+                    {formatExpiryRule(cat.autoExpireMinutes)}. Neighbours nearby will see it. Your email stays private.
                   </span>
                 </div>
               </div>

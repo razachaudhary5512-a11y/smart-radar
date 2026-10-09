@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DEFAULT_COORDS, getBrowserLocation } from './location';
 import { useAuth } from './auth';
 import { useAppSettings } from './settings';
@@ -85,20 +85,41 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [areaCoords, setAreaCoords] = useState<Coords | null>(() => readArea()?.coords ?? null);
   const [gpsLabel, setGpsLabel] = useState<string>('');
   const [radius, setRadius] = useState(() => clampRadius(readNumber(RADIUS_KEY, 3)));
-  const [hasOwnRadius] = useState(() => {
+  // Read live (not once at start-up): onboarding saves the choice after the app has mounted.
+  const hasOwnRadius = () => {
     try {
       return localStorage.getItem(RADIUS_KEY) !== null;
     } catch {
       return false;
     }
-  });
+  };
   const { default_radius_km } = useAppSettings();
 
+  // Signed in: follow the account's radius. Exception: a brand-new account keeps the
+  // radius picked on this device (e.g. during onboarding) instead of the server default.
+  const adoptedFor = useRef<string | null>(null);
+  const profileId = profile?.id;
+  const profileRadius = profile?.radius_km;
+  const profileCreated = profile?.created_at;
   useEffect(() => {
-    if (profile?.radius_km) setRadius(clampRadius(profile.radius_km));
-    // New visitors start with the owner's default radius.
-    else if (!hasOwnRadius) setRadius(clampRadius(default_radius_km));
-  }, [profile?.radius_km, hasOwnRadius, default_radius_km]);
+    if (!profileId) {
+      // New visitors start with the owner's default radius.
+      if (!hasOwnRadius()) setRadius(clampRadius(default_radius_km));
+      return;
+    }
+    if (adoptedFor.current !== profileId) {
+      adoptedFor.current = profileId;
+      const isNewAccount = profileCreated ? Date.now() - new Date(profileCreated).getTime() < 10 * 60 * 1000 : false;
+      const local = hasOwnRadius() ? clampRadius(readNumber(RADIUS_KEY, profileRadius ?? 3)) : null;
+      if (isNewAccount && local !== null && local !== profileRadius) {
+        setRadius(local);
+        updateProfile({ radius_km: local }).catch(() => {});
+        return;
+      }
+    }
+    if (profileRadius) setRadius(clampRadius(profileRadius));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hasOwnRadius reads storage directly
+  }, [profileId, profileRadius, profileCreated, default_radius_km, updateProfile]);
 
   const requestLocation = useCallback(async () => {
     setGpsStatus('locating');

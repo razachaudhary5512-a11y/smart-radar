@@ -6,8 +6,8 @@
  *
  * SECURITY: every `VITE_*` value is compiled into the public JavaScript bundle.
  * Only put PUBLIC values here (URLs, anon keys, feature flags). Server secrets
- * such as Twilio auth tokens or JazzCash passwords belong in Supabase Edge
- * Function secrets (`supabase secrets set ...`), never in this file.
+ * belong in Supabase (dashboard settings or Edge Function secrets), never in
+ * this file.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -42,14 +42,6 @@ export const ENV = {
   },
   /** Cloudflare Turnstile site key (public). Set only after CAPTCHA is enabled in Supabase Auth. */
   turnstileSiteKey: str(env.VITE_TURNSTILE_SITE_KEY),
-  features: {
-    /** Phone (SMS) sign-in. Set VITE_ENABLE_PHONE_AUTH=false until an SMS provider is connected in Supabase. */
-    phoneAuth: str(env.VITE_ENABLE_PHONE_AUTH) !== 'false',
-    /** Custom SMS via the `send-sms` Edge Function (Twilio secrets live server-side). */
-    customSms: str(env.VITE_ENABLE_CUSTOM_SMS) === 'true',
-    /** JazzCash / EasyPaisa via the `process-payment` Edge Function. */
-    payments: str(env.VITE_ENABLE_PAYMENTS) === 'true',
-  },
 } as const;
 
 /** Path the app is served from: "/" normally, "/smart-radar/" on GitHub Pages. */

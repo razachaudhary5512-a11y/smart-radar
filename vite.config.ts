@@ -10,7 +10,7 @@ function guardSecrets(mode: string): Plugin {
     configResolved(config) {
       const env = loadEnv(mode, config.envDir || config.root, 'VITE_');
       const leaked = Object.entries(env)
-        .filter(([k, v]) => /TWILIO_AUTH_TOKEN|TWILIO_ACCOUNT_SID|JAZZCASH_PASSWORD|SERVICE_ROLE|SECRET/i.test(k) && v.trim())
+        .filter(([k, v]) => /TWILIO|JAZZCASH|SERVICE_ROLE|SECRET|PASSWORD|SMTP|PRIVATE/i.test(k) && v.trim())
         .map(([k]) => k);
       if (leaked.length) {
         throw new Error(

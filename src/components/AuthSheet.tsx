@@ -1,31 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Lock, Mail, MessageSquareText, Phone, ShieldCheck } from 'lucide-react';
-import { Segmented, Sheet, useToast } from '@/components/ui';
+import { ArrowLeft, Lock, Mail, MailCheck, ShieldCheck } from 'lucide-react';
+import { Sheet, useToast } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { useApi } from '@/data';
-import { toE164PK } from '@/lib/format';
-import { useLocalStorage } from '@/lib/hooks';
-import { ENV } from '@/config/env';
 import { Turnstile, captchaEnabled } from '@/components/Turnstile';
 
 type Step = 'start' | 'code' | 'name';
-type Method = 'phone' | 'email';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/** Email sign-in (Gmail or any address): a one-time link, or a 6-digit code if the email contains one. */
 export function AuthSheet() {
-  const { authPrompt, closeAuthPrompt, sendOtp, verifyOtp, sendEmailOtp, verifyEmailOtp } = useAuth();
+  const { authPrompt, closeAuthPrompt, sendEmailOtp, verifyEmailOtp } = useAuth();
   const api = useApi();
   const toast = useToast();
-  // Phone needs an SMS provider in live mode; demo mode always supports both.
-  const phoneAvailable = api.mode === 'demo' || ENV.features.phoneAuth;
-  const [savedMethod, setMethod] = useLocalStorage<Method>('sr_signin_method', phoneAvailable ? 'phone' : 'email');
-  const method: Method = phoneAvailable ? savedMethod : 'email';
   const [step, setStep] = useState<Step>('start');
-  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [target, setTarget] = useState(''); // normalised phone or email the code was sent to
+  const [target, setTarget] = useState(''); // normalised email the link/code was sent to
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [devCode, setDevCode] = useState<string | undefined>();
@@ -53,26 +45,19 @@ export function AuthSheet() {
 
   async function sendCode(e?: React.FormEvent) {
     e?.preventDefault();
-    let to: string | null;
-    if (method === 'phone') {
-      to = toE164PK(phone);
-      if (!to) return setError('Enter a valid Pakistani mobile number, e.g. 0300 1234567');
-    } else {
-      to = email.trim().toLowerCase();
-      if (!EMAIL_RE.test(to)) return setError('Enter a valid email address.');
-    }
+    const to = email.trim().toLowerCase();
+    if (!EMAIL_RE.test(to)) return setError('Enter a valid email address, e.g. yourname@gmail.com');
     if (captchaEnabled && !captcha) return setError('Please wait a moment while we check you’re not a robot, then try again.');
     setBusy(true);
     setError(null);
-    const token = captcha ?? undefined;
-    const res = method === 'phone' ? await sendOtp(to, token) : await sendEmailOtp(to, token);
+    const res = await sendEmailOtp(to, captcha ?? undefined);
     setCaptchaReset((n) => n + 1); // tokens are single-use
     setBusy(false);
-    if (res.error) return setError(res.error);
+    if (res.error) return setError(friendlyError(res.error));
     setTarget(to);
     setDevCode(res.devCode);
     setStep('code');
-    setCooldown(30);
+    setCooldown(60);
     setTimeout(() => codeRef.current?.focus(), 50);
   }
 
@@ -80,10 +65,10 @@ export function AuthSheet() {
     if (value.length !== 6) return;
     setBusy(true);
     setError(null);
-    const res = method === 'phone' ? await verifyOtp(target, value) : await verifyEmailOtp(target, value);
+    const res = await verifyEmailOtp(target, value);
     if (res.error) {
       setBusy(false);
-      setError(res.error);
+      setError(friendlyError(res.error));
       setCode('');
       return;
     }
@@ -110,96 +95,54 @@ export function AuthSheet() {
     closeAuthPrompt(true);
   }
 
-  const StartIcon = method === 'phone' ? Phone : Mail;
-
   return (
     <Sheet open={authPrompt.open} onClose={() => closeAuthPrompt(false)} size="sm" bare>
       <div className="px-6 pb-7 pt-4 lg:pt-7">
         {step === 'code' && (
           <button onClick={() => setStep('start')} className="btn-ghost btn-sm -ml-2 mb-2 px-2">
-            <ArrowLeft className="h-4 w-4" /> Change {method === 'phone' ? 'number' : 'email'}
+            <ArrowLeft className="h-4 w-4" /> Change email
           </button>
         )}
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-glow">
-          {step === 'start' ? <StartIcon className="h-6 w-6" /> : step === 'code' ? <MessageSquareText className="h-6 w-6" /> : <ShieldCheck className="h-6 w-6" />}
+          {step === 'start' ? <Mail className="h-6 w-6" /> : step === 'code' ? <MailCheck className="h-6 w-6" /> : <ShieldCheck className="h-6 w-6" />}
         </div>
 
         {step === 'start' && (
           <form onSubmit={sendCode}>
             <h2 className="text-xl font-extrabold tracking-tight text-ink">Sign in to Be Alert</h2>
             <p className="mt-1.5 text-sm text-ink-2">
-              {authPrompt.reason ?? 'Post, vote and connect with neighbours.'} We’ll send you a 6-digit code.
+              {authPrompt.reason ?? 'Post, vote and connect with neighbours.'} Enter your Gmail or any email — we’ll send you a sign-in link. No password needed.
             </p>
-            {phoneAvailable && (
-              <Segmented
-                className="mt-5 flex w-full"
-                value={method}
-                onChange={(m) => {
-                  setMethod(m);
-                  setError(null);
-                }}
-                options={[
-                  { value: 'phone', label: 'Phone', icon: Phone },
-                  { value: 'email', label: 'Email', icon: Mail },
-                ]}
-              />
-            )}
-            {method === 'phone' ? (
-              <>
-                <label className="label mt-4" htmlFor="sr-phone">Mobile number</label>
-                <div className="flex gap-2">
-                  <span className="input flex w-auto items-center px-3.5 font-semibold text-ink-2">+92</span>
-                  <input
-                    id="sr-phone"
-                    data-autofocus
-                    inputMode="tel"
-                    autoComplete="tel-national"
-                    className="input flex-1 text-base tracking-wide"
-                    placeholder="300 1234567"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/[^\d\s+]/g, ''))}
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <label className="label mt-4" htmlFor="sr-email">Email address</label>
-                <input
-                  id="sr-email"
-                  data-autofocus
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  className="input text-base"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </>
-            )}
+            <label className="label mt-5" htmlFor="sr-email">Email address</label>
+            <input
+              id="sr-email"
+              data-autofocus
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              className="input text-base"
+              placeholder="yourname@gmail.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
             {error && <p className="mt-2 text-sm font-medium text-danger-600">{error}</p>}
-            <button
-              type="submit"
-              className="btn-primary mt-5 w-full"
-              disabled={busy || (method === 'phone' ? phone.replace(/\D/g, '').length < 10 : !email.includes('@'))}
-            >
-              {busy ? 'Sending code…' : 'Send code'}
+            <button type="submit" className="btn-primary mt-5 w-full" disabled={busy || !email.includes('@')}>
+              {busy ? 'Sending…' : 'Email me a sign-in link'}
             </button>
             <p className="mt-4 flex items-start gap-2 text-xs text-ink-3">
               <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              Your {method === 'phone' ? 'number' : 'email'} is never shown publicly. Max 5 code requests per hour to prevent spam.
+              Your email is never shown publicly.
             </p>
           </form>
         )}
 
         {step === 'code' && (
           <div>
-            <h2 className="text-xl font-extrabold tracking-tight text-ink">{method === 'email' && !devCode ? 'Check your email' : 'Enter the code'}</h2>
+            <h2 className="text-xl font-extrabold tracking-tight text-ink">{devCode ? 'Enter the code' : 'Check your email'}</h2>
             <p className="mt-1.5 text-sm text-ink-2">
-              Sent to <span className="font-semibold text-ink">{target}</span>
-              {method === 'email' && ' — check your spam folder too.'}
+              Sent to <span className="font-semibold text-ink">{target}</span> — check your spam folder too.
             </p>
-            {method === 'email' && !devCode && (
+            {!devCode && (
               <div className="mt-4 rounded-xl bg-primary-600/10 px-3.5 py-3 text-[13px] text-ink">
                 <b>Open the email and tap “Log In”</b> on this device — you’ll come back here signed in automatically. You can close this window.
                 <span className="mt-1 block text-ink-2">If the email shows a 6-digit code instead, enter it below.</span>
@@ -230,7 +173,7 @@ export function AuthSheet() {
               {busy ? 'Verifying…' : 'Verify & continue'}
             </button>
             <button className="btn-ghost mt-2 w-full" disabled={cooldown > 0 || busy} onClick={() => sendCode()}>
-              {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+              {cooldown > 0 ? `Resend email in ${cooldown}s` : 'Resend email'}
             </button>
           </div>
         )}
@@ -255,4 +198,13 @@ export function AuthSheet() {
       </div>
     </Sheet>
   );
+}
+
+/** Turn Supabase's technical auth errors into plain language. */
+function friendlyError(msg: string): string {
+  if (/rate limit|too many|seconds/i.test(msg)) return 'Too many emails were requested. Please wait a minute and try again.';
+  if (/expired|invalid/i.test(msg)) return 'That code is wrong or has expired. Request a new email.';
+  if (/captcha/i.test(msg)) return 'Security check failed. Please try again.';
+  if (/fetch|network/i.test(msg)) return 'No internet connection. Check your connection and try again.';
+  return msg;
 }

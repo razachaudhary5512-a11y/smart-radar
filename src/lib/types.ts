@@ -90,6 +90,8 @@ export interface AdminUser {
   id: string;
   display_name: string;
   phone: string | null;
+  /** Sign-in email (owner/admin view only). */
+  email: string | null;
   is_business: boolean;
   is_admin: boolean;
   is_owner: boolean;

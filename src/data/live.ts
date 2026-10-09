@@ -108,19 +108,6 @@ const auth: AuthApi = {
     const { data } = sb().auth.onAuthStateChange((_e, s) => cb(toSession(s?.user)));
     return () => data.subscription.unsubscribe();
   },
-  async sendOtp(phone, captchaToken) {
-    // Server-side rate limit (5 / hour / number). Fails open if the RPC is missing.
-    const { data: allowed, error: rlError } = await sb().rpc('request_otp_slot', { p_phone: phone });
-    if (!rlError && allowed === false) {
-      return { error: 'Too many code requests for this number. Please try again in an hour.' };
-    }
-    const { error } = await sb().auth.signInWithOtp({ phone, options: { captchaToken } });
-    return { error: error?.message ?? null };
-  },
-  async verifyOtp(phone, code) {
-    const { error } = await sb().auth.verifyOtp({ phone, token: code, type: 'sms' });
-    return { error: error?.message ?? null };
-  },
   async sendEmailOtp(email, captchaToken) {
     // Supabase emails a sign-in link (and a 6-digit code if the template includes {{ .Token }}).
     // The link brings the user back to the app, where the session is picked up automatically.
@@ -296,7 +283,7 @@ const admin: AdminApi = {
   async listUsers(search, filter) {
     const { data, error } = await sb().rpc('admin_list_users', { p_search: search.trim() || null, p_filter: filter });
     fail(error);
-    return ((data ?? []) as AdminUser[]).map((u) => ({ ...u, post_count: Number(u.post_count), reports_received: Number(u.reports_received) }));
+    return ((data ?? []) as AdminUser[]).map((u) => ({ ...u, email: u.email ?? null, post_count: Number(u.post_count), reports_received: Number(u.reports_received) }));
   },
   async updateUser(_adminId, userId, action, value, reason) {
     const { error } = await sb().rpc('admin_update_user', { p_user_id: userId, p_action: action, p_value: value ?? null, p_reason: reason ?? null });

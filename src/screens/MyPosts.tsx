@@ -40,7 +40,7 @@ export function MyPosts() {
         }
       />
       <PageBody narrow>
-        <RequireAuth icon={FileText} title="Your posts live here" body="Sign in with your phone or email to post and manage your listings, alerts and events.">
+        <RequireAuth icon={FileText} title="Your posts live here" body="Sign in with your email to post and manage your listings, alerts and events.">
           <MyPostsList />
         </RequireAuth>
       </PageBody>

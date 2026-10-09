@@ -11,8 +11,6 @@ interface AuthContextValue {
   isAdmin: boolean;
   /** App owner (super-admin). */
   isOwner: boolean;
-  sendOtp(phoneE164: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
-  verifyOtp(phoneE164: string, code: string): Promise<{ error: string | null }>;
   sendEmailOtp(email: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
   verifyEmailOtp(email: string, code: string): Promise<{ error: string | null }>;
   adminSignIn(email: string, password: string, captchaToken?: string): Promise<{ error: string | null }>;
@@ -113,8 +111,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       isAdmin: Boolean(user && (profile?.is_admin || profile?.is_owner)),
       isOwner: Boolean(user && profile?.is_owner),
-      sendOtp: (p, t) => api.auth.sendOtp(p, t),
-      verifyOtp: (p, c) => api.auth.verifyOtp(p, c),
       sendEmailOtp: (e, t) => api.auth.sendEmailOtp(e, t),
       verifyEmailOtp: (e, c) => api.auth.verifyEmailOtp(e, c),
       adminSignIn: (e, pw, t) => api.auth.adminSignIn(e, pw, t),

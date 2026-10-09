@@ -719,7 +719,7 @@ function UsersAdmin() {
         </div>
         <div className="relative sm:ml-auto sm:w-72">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
-          <input className="input pl-10" placeholder="Search name or phone…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input pl-10" placeholder="Search name or email…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
 
@@ -729,9 +729,9 @@ function UsersAdmin() {
         <EmptyState icon={Users} title="No users found" body="Try a different filter or search." />
       ) : (
         <div className="card mt-4 overflow-hidden">
-          <div className="hidden grid-cols-[minmax(0,1fr)_150px_110px_80px_90px_110px] gap-4 border-b border-line bg-surface-2 px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-3 lg:grid">
+          <div className="hidden grid-cols-[minmax(0,1fr)_220px_90px_70px_80px_110px] gap-4 border-b border-line bg-surface-2 px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-3 lg:grid">
             <span>User</span>
-            <span>Phone</span>
+            <span>Email</span>
             <span>Trust</span>
             <span>Posts</span>
             <span>Reports</span>
@@ -742,7 +742,7 @@ function UsersAdmin() {
               <li key={u.id}>
                 <button
                   onClick={() => setSelected(u)}
-                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-2 lg:grid-cols-[minmax(0,1fr)_150px_110px_80px_90px_110px] lg:gap-4 lg:px-5"
+                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-2 lg:grid-cols-[minmax(0,1fr)_220px_90px_70px_80px_110px] lg:gap-4 lg:px-5"
                 >
                   <span className="flex min-w-0 items-center gap-3">
                     <Avatar name={u.display_name} size={38} />
@@ -765,7 +765,7 @@ function UsersAdmin() {
                       </span>
                     </span>
                   </span>
-                  <span className="hidden truncate text-sm text-ink-2 lg:block">{u.phone ?? '—'}</span>
+                  <span className="hidden truncate text-sm text-ink-2 lg:block">{u.email ?? u.phone ?? '—'}</span>
                   <span className="flex items-center gap-2">
                     <span className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-surface-2 lg:block">
                       <span className={cn('block h-full rounded-full', u.trust_score >= 70 ? 'bg-success-500' : u.trust_score >= 40 ? 'bg-warning-500' : 'bg-danger-500')} style={{ width: `${u.trust_score}%` }} />
@@ -815,7 +815,7 @@ function UserSheet({ user: u, onClose }: { user: AdminUser | null; onClose(): vo
                 {u.display_name} <VerifiedBadge profile={u} size={18} />
               </p>
               <p className="text-sm text-ink-2">
-                {u.phone ?? (u.is_admin ? 'Email sign-in' : 'No phone on file')} · joined {formatDate(u.created_at)}
+                {u.email ?? u.phone ?? 'No email on file'} · joined {formatDate(u.created_at)}
               </p>
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {u.is_owner ? (
@@ -955,10 +955,12 @@ function Verification() {
               {r.is_business && <Badge tone="primary">Business</Badge>}
             </div>
             <dl className="mt-4 space-y-2 rounded-xl bg-surface-2 p-3.5 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-ink-3">Phone</dt>
-                <dd className="font-semibold text-ink">{r.phone ?? '—'}</dd>
-              </div>
+              {r.phone && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-ink-3">Phone</dt>
+                  <dd className="font-semibold text-ink">{r.phone}</dd>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-ink-3">CNIC</dt>
                 <dd className="flex items-center gap-1.5 font-mono font-semibold text-ink">
@@ -1284,7 +1286,7 @@ function TeamAdmin() {
                     {u.id === me?.id && <span className="text-xs font-medium text-ink-3">(you)</span>}
                   </p>
                   <p className="text-xs text-ink-3">
-                    {u.phone ?? 'Email sign-in'} · joined {formatDate(u.created_at)}
+                    {u.email ?? u.phone ?? 'Email sign-in'} · joined {formatDate(u.created_at)}
                   </p>
                 </div>
                 {u.is_owner ? (
@@ -1333,7 +1335,7 @@ function TeamAdmin() {
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title="Add an admin" description="Pick a trusted member. They get admin console access immediately." size="sm">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
-          <input data-autofocus className="input pl-10" placeholder="Search name or phone…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input data-autofocus className="input pl-10" placeholder="Search name or email…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <ul className="mt-3 max-h-80 divide-y divide-line overflow-y-auto rounded-xl border border-line">
           {(candidates.data ?? [])

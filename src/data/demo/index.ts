@@ -285,37 +285,6 @@ const auth: AuthApi = {
     authListeners.add(cb);
     return () => authListeners.delete(cb);
   },
-  async sendOtp(phone) {
-    const count = pendingOtp.get(phone) ?? 0;
-    if (count >= 5) return { error: 'Too many code requests for this number. Please try again in an hour.' };
-    pendingOtp.set(phone, count + 1);
-    return { error: null, devCode: DEMO_OTP };
-  },
-  async verifyOtp(phone, code) {
-    if (code !== DEMO_OTP) return { error: 'That code is incorrect. In demo mode the code is 123456.' };
-    const d = ensure();
-    let u = d.users.find((x) => x.phone === phone);
-    if (!u) {
-      u = {
-        id: `u-${phone.replace(/\D/g, '')}`,
-        display_name: '',
-        avatar_url: null,
-        is_business: false,
-        verification_status: null,
-        verification_expiry: null,
-        trust_score: 50,
-        phone,
-        cnic_number: null,
-        is_admin: false,
-        created_at: new Date().toISOString(),
-      };
-      d.users.push(u);
-    }
-    if (!d.profiles[u.id]) d.profiles[u.id] = defaultProfile(u);
-    save();
-    setSession({ id: u.id, phone, email: null });
-    return { error: null };
-  },
   async sendEmailOtp(email) {
     const e = email.trim().toLowerCase();
     const count = pendingOtp.get(e) ?? 0;
@@ -567,7 +536,7 @@ const admin: AdminApi = {
     const d = ensure();
     const s = search.trim().toLowerCase();
     return d.users
-      .filter((u) => !s || u.display_name.toLowerCase().includes(s) || (u.phone ?? '').includes(s))
+      .filter((u) => !s || u.display_name.toLowerCase().includes(s) || (u.email ?? '').toLowerCase().includes(s) || (u.phone ?? '').includes(s))
       .filter((u) => {
         if (filter === 'verified') return u.verification_status === 'approved';
         if (filter === 'business') return u.is_business;
@@ -587,6 +556,7 @@ const admin: AdminApi = {
           id: u.id,
           display_name: u.display_name || 'Unnamed user',
           phone: u.phone,
+          email: u.email ?? null,
           is_business: u.is_business,
           is_admin: u.is_admin || Boolean(u.is_owner),
           is_owner: Boolean(u.is_owner),

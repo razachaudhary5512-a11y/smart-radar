@@ -188,7 +188,7 @@ function AccountCard({ profile }: { profile: ProfileT }) {
             {profile.display_name || 'Add your name'} <VerifiedBadge profile={profile} size={18} />
           </h2>
           <p className="text-sm text-ink-2">
-            {maskPhone(profile.phone) || 'Admin account'} · Member since {formatDate(profile.created_at, { month: 'short', year: 'numeric' })}
+            {user?.email || maskPhone(profile.phone) || 'Signed in'} · Member since {formatDate(profile.created_at, { month: 'short', year: 'numeric' })}
           </p>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2">
