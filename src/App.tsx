@@ -7,6 +7,7 @@ import { SettingsProvider } from '@/lib/settings';
 import { ThemeProvider } from '@/lib/theme';
 import { LocationProvider } from '@/lib/location-context';
 import { ToastProvider, useToast } from '@/components/ui';
+import { PwaProvider } from '@/lib/pwa';
 import { AppShell, PageLoader } from '@/components/layout/AppShell';
 import { AuthSheet } from '@/components/AuthSheet';
 import { LogoMark } from '@/components/layout/Logo';
@@ -94,6 +95,7 @@ export default function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || undefined}>
       <NativeBridge />
       <ToastProvider>
+        <PwaProvider>
         <BackendProvider fallback={<Splash />}>
           <AuthProvider>
             <SettingsProvider>
@@ -136,6 +138,7 @@ export default function App() {
             </SettingsProvider>
           </AuthProvider>
         </BackendProvider>
+        </PwaProvider>
       </ToastProvider>
     </BrowserRouter>
   );

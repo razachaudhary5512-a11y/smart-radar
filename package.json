@@ -1,7 +1,7 @@
 {
   "name": "be-alert",
   "private": true,
-  "version": "2.6.0",
+  "version": "2.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "build:pages": "vite build --mode pages && node scripts/spa-fallback.mjs",
     "deploy:pages": "npm run build:pages && gh-pages -d dist --dotfiles -m \"Deploy Be Alert\"",
-    "build:android": "vite build --mode android && cap sync android",
+    "build:android": "vite build --mode android && node -e \"require('fs').rmSync('dist/screenshots',{recursive:true,force:true})\" && cap sync android",
     "apk": "npm run build:android && cd android && gradlew.bat assembleDebug",
     "icons": "node scripts/make-icons.mjs",
     "release": "npm run build:android && cd android && gradlew.bat bundleRelease assembleRelease"
@@ -52,7 +52,9 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vite-plugin-pwa": "^1.3.0",
+    "workbox-window": "^7.4.1"
   },
   "description": "Be Alert — hyperlocal community app: alerts, deals, services, transport and community within 1–50 km.",
   "overrides": {

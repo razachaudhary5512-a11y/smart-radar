@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, URL } from 'node:url';
 
@@ -68,11 +69,89 @@ function contentSecurityPolicy(mode: string): Plugin {
   };
 }
 
+/**
+ * Installable web app (PWA): manifest, icons, offline app shell and smart caching.
+ * Not used in the Android build (Capacitor ships the files inside the APK).
+ */
+function webApp(mode: string, base: string) {
+  return VitePWA({
+    disable: mode === 'android',
+    registerType: 'prompt',
+    injectRegister: null, // registered from src/components/PwaManager.tsx
+    includeAssets: ['favicon.svg', 'favicon-64.png', 'apple-touch-icon.png'],
+    manifest: {
+      id: base,
+      name: 'Be Alert — Your Neighbourhood, Live',
+      short_name: 'Be Alert',
+      description: 'Alerts, deals, services, jobs, rides and community — everything happening within 1–50 km of you.',
+      lang: 'en',
+      dir: 'ltr',
+      start_url: base,
+      scope: base,
+      display: 'standalone',
+      display_override: ['standalone', 'minimal-ui'],
+      background_color: '#f6f7fb',
+      theme_color: '#2549ea',
+      categories: ['social', 'news', 'lifestyle', 'utilities'],
+      icons: [
+        { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: 'maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+      shortcuts: [
+        { name: 'New post', short_name: 'Post', url: `${base}create`, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] },
+        { name: 'Live map', short_name: 'Map', url: `${base}map`, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] },
+        { name: 'Emergency', short_name: 'SOS', url: `${base}emergency`, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] },
+      ],
+      screenshots: [
+        { src: 'screenshots/phone-feed.webp', sizes: '585x1266', type: 'image/webp', form_factor: 'narrow', label: 'Everything happening near you' },
+        { src: 'screenshots/phone-map.webp', sizes: '585x1266', type: 'image/webp', form_factor: 'narrow', label: 'Live map of local alerts' },
+        { src: 'screenshots/phone-post.webp', sizes: '585x1266', type: 'image/webp', form_factor: 'narrow', label: 'Help neighbours in an emergency' },
+        { src: 'screenshots/phone-emergency.webp', sizes: '585x1266', type: 'image/webp', form_factor: 'narrow', label: 'One-tap emergency numbers' },
+        { src: 'screenshots/desktop-feed.webp', sizes: '1280x800', type: 'image/webp', form_factor: 'wide', label: 'Your neighbourhood feed' },
+        { src: 'screenshots/desktop-map.webp', sizes: '1280x800', type: 'image/webp', form_factor: 'wide', label: 'Live map' },
+      ],
+    },
+    workbox: {
+      globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+      globIgnores: ['**/screenshots/**', '**/icon-512.png', '**/maskable-512.png', '**/firebase-messaging-sw.js'],
+      navigateFallback: `${base}index.html`,
+      navigateFallbackDenylist: [/firebase-messaging-sw\.js$/],
+      cleanupOutdatedCaches: true,
+      // Personal data (Supabase API) is never cached — only public, shared resources.
+      runtimeCaching: [
+        {
+          urlPattern: /^https:\/\/[abc]\.tile\.openstreetmap\.org\//,
+          handler: 'CacheFirst',
+          options: { cacheName: 'map-tiles', expiration: { maxEntries: 400, maxAgeSeconds: 14 * 24 * 3600 }, cacheableResponse: { statuses: [0, 200] } },
+        },
+        {
+          urlPattern: /^https:\/\/[^/]+\.supabase\.co\/storage\/v1\/object\/public\//,
+          handler: 'CacheFirst',
+          options: { cacheName: 'post-images', expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 3600 }, cacheableResponse: { statuses: [0, 200] } },
+        },
+        {
+          urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
+          handler: 'StaleWhileRevalidate',
+          options: { cacheName: 'font-css' },
+        },
+        {
+          urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
+          handler: 'CacheFirst',
+          options: { cacheName: 'font-files', expiration: { maxEntries: 20, maxAgeSeconds: 365 * 24 * 3600 }, cacheableResponse: { statuses: [0, 200] } },
+        },
+      ],
+    },
+  });
+}
+
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
   // GitHub Pages serves the site from /<repo-name>/; everything else from /.
-  base: mode === 'pages' ? '/smart-radar/' : '/',
-  plugins: [react(), guardSecrets(mode), contentSecurityPolicy(mode)],
+  const base = mode === 'pages' ? '/smart-radar/' : '/';
+  return {
+  base,
+  plugins: [react(), guardSecrets(mode), contentSecurityPolicy(mode), webApp(mode, base)],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -90,4 +169,5 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-}));
+};
+});

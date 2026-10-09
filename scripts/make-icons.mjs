@@ -22,6 +22,10 @@ const svg = (w, h, body) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"
 
 // Full-bleed square (launchers / maskable icons apply their own shape).
 const full = svg(1024, 1024, `<rect width="1024" height="1024" fill="url(#bg)"/>${radar(512, 512, 17, 'sw')}`);
+// Rounded square on transparent (browser tabs, install dialogs, desktop).
+const rounded = svg(1024, 1024, `<rect width="1024" height="1024" rx="228" fill="url(#bg)"/>${radar(512, 512, 17, 'sw')}`);
+// Maskable: full bleed, radar inside the 80% safe circle.
+const maskable = svg(1024, 1024, `<rect width="1024" height="1024" fill="url(#bg)"/>${radar(512, 512, 13, 'sw')}`);
 // Adaptive icon layers: radar kept inside the 66% safe zone.
 const foreground = svg(1024, 1024, radar(512, 512, 12.5, 'sw'));
 const background = svg(1024, 1024, `<rect width="1024" height="1024" fill="url(#bg)"/>`);
@@ -37,5 +41,11 @@ await Promise.all([
   sharp(splash('#080b13')).png().toFile('assets/splash-dark.png'),
   sharp(full).resize(192, 192).png().toFile('public/icon-192.png'),
   sharp(full).resize(512, 512).png().toFile('public/icon-512.png'),
+  // Web app (PWA): rounded "any" icons, full-bleed maskable icon, iOS home-screen icon.
+  sharp(rounded).resize(192, 192).png().toFile('public/pwa-192.png'),
+  sharp(rounded).resize(512, 512).png().toFile('public/pwa-512.png'),
+  sharp(maskable).resize(512, 512).png().toFile('public/maskable-512.png'),
+  sharp(full).resize(180, 180).flatten({ background: '#1d38d7' }).png().toFile('public/apple-touch-icon.png'),
+  sharp(rounded).resize(64, 64).png().toFile('public/favicon-64.png'),
 ]);
 console.log('✔ icons written to assets/ and public/');

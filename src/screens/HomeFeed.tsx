@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ChevronDown,
   Crown,
+  Download,
   Clock,
   Flame,
   LocateFixed,
@@ -25,6 +26,7 @@ import { useApi, useBackend } from '@/data';
 import { finalizeFeed } from '@/data/feed';
 import { useAuth } from '@/lib/auth';
 import { useRadar } from '@/lib/location-context';
+import { usePwa } from '@/lib/pwa';
 import { useLocalStorage, useQuery } from '@/lib/hooks';
 import { CATEGORIES, getCategory, headlineValue } from '@/lib/categories';
 import { cn, greeting, telLink, timeAgo } from '@/lib/format';
@@ -133,6 +135,7 @@ export function HomeFeed() {
         <div className="min-w-0">
           <DemoNotice />
           <ConsoleStrip />
+          <InstallCard />
 
           {/* Hero */}
           <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-600 via-primary-700 to-[#131a4a] p-5 text-white shadow-lift lg:p-7">
@@ -485,6 +488,28 @@ function ConsoleStrip() {
       </span>
       <ArrowRight className="h-5 w-5 shrink-0 text-amber-600 sm:hidden" />
     </Link>
+  );
+}
+
+/** Phone browsers: suggest installing the web app (dismissible, remembered). */
+function InstallCard() {
+  const { canInstall, install } = usePwa();
+  const [dismissed, setDismissed] = useLocalStorage('sr_install_dismissed', false);
+  if (!canInstall || dismissed) return null;
+  return (
+    <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary-600/25 bg-primary-600/5 p-3.5 lg:hidden">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white">
+        <Download className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-ink">Install Be Alert</p>
+        <p className="text-[13px] text-ink-2">Opens full-screen from your home screen, loads instantly.</p>
+      </div>
+      <button className="btn-primary btn-sm shrink-0" onClick={install}>Install</button>
+      <button aria-label="Dismiss" className="icon-btn h-8 w-8 shrink-0" onClick={() => setDismissed(true)}>
+        <X className="h-4 w-4" />
+      </button>
+    </div>
   );
 }
 
