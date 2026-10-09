@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setProfile(await api.auth.getProfile(u.id));
       } catch (e) {
-        console.warn('[Smart Radar] Could not load profile', e);
+        console.warn('[Be Alert] Could not load profile', e);
       }
     },
     [api]

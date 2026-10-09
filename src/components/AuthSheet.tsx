@@ -106,7 +106,7 @@ export function AuthSheet() {
     const session = await api.auth.getSession();
     if (session) await api.auth.updateProfile(session.id, { display_name: n });
     setBusy(false);
-    toast.success(`Welcome to Smart Radar, ${n.split(' ')[0]}!`);
+    toast.success(`Welcome to Be Alert, ${n.split(' ')[0]}!`);
     closeAuthPrompt(true);
   }
 
@@ -126,7 +126,7 @@ export function AuthSheet() {
 
         {step === 'start' && (
           <form onSubmit={sendCode}>
-            <h2 className="text-xl font-extrabold tracking-tight text-ink">Sign in to Smart Radar</h2>
+            <h2 className="text-xl font-extrabold tracking-tight text-ink">Sign in to Be Alert</h2>
             <p className="mt-1.5 text-sm text-ink-2">
               {authPrompt.reason ?? 'Post, vote and connect with neighbours.'} We’ll send you a 6-digit code.
             </p>

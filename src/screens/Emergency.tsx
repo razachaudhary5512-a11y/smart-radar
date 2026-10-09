@@ -45,7 +45,7 @@ export function Emergency() {
   const urgent = (alerts.data ?? []).filter((p) => getCategory(p.category).isUrgent);
 
   const here = radar.gpsCoords ?? radar.coords;
-  const sosMessage = `I need help. My current location: ${googleMapsLink(here)} (sent from Smart Radar)`;
+  const sosMessage = `I need help. My current location: ${googleMapsLink(here)} (sent from Be Alert)`;
 
   async function shareLocation() {
     if (!radar.gpsCoords) await radar.requestLocation();

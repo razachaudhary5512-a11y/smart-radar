@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Smart Radar</string>
-    <string name="title_activity_main">Smart Radar</string>
-    <string name="package_name">com.smartradar.app</string>
-    <string name="custom_url_scheme">com.smartradar.app</string>
+    <string name="app_name">Be Alert</string>
+    <string name="title_activity_main">Be Alert</string>
+    <string name="package_name">com.bealert.app</string>
+    <string name="custom_url_scheme">com.bealert.app</string>
 </resources>

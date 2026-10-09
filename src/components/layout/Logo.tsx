@@ -29,10 +29,10 @@ export function LogoMark({ size = 36, className }: { size?: number; className?: 
 
 export function Logo({ className }: { className?: string }) {
   return (
-    <Link to="/" className={cn('flex items-center gap-2.5', className)} aria-label="Smart Radar home">
+    <Link to="/" className={cn('flex items-center gap-2.5', className)} aria-label="Be Alert home">
       <LogoMark size={34} />
       <span className="text-[17px] font-extrabold tracking-tight text-ink">
-        Smart<span className="text-primary-600">Radar</span>
+        Be <span className="text-primary-600">Alert</span>
       </span>
     </Link>
   );

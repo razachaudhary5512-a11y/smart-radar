@@ -43,7 +43,7 @@ async function resolveBackend(): Promise<BackendState> {
   }
   const reachable = await pingSupabase();
   if (!reachable) {
-    console.warn('[Smart Radar] Supabase project is unreachable — falling back to demo mode.');
+    console.warn('[Be Alert] Supabase project is unreachable — falling back to demo mode.');
     return demo('unreachable');
   }
   clearDemoLeftovers();

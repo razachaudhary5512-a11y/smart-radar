@@ -104,7 +104,7 @@ export function usePostActions(post: PostWithRelations, onChange: (p: PostWithRe
   const share = useCallback(async () => {
     const url = appUrl(`post/${post.id}`);
     try {
-      const how = await shareContent({ title: post.title, text: `${post.title} — on Smart Radar`, url });
+      const how = await shareContent({ title: post.title, text: `${post.title} — on Be Alert`, url });
       if (how === 'copied') toast.success('Link copied', 'Share it with your neighbours.');
     } catch {
       toast.error('Could not share this post');

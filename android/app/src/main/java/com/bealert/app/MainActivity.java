@@ -1,4 +1,4 @@
-package com.smartradar.app;
+package com.bealert.app;
 
 import com.getcapacitor.BridgeActivity;
 

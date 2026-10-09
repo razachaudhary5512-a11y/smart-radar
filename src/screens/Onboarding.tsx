@@ -44,7 +44,7 @@ export function Onboarding() {
           <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:16px_16px]" />
           <div className="relative flex items-center gap-2.5 self-start lg:absolute lg:left-8 lg:top-8">
             <LogoMark size={34} />
-            <span className="text-[17px] font-extrabold tracking-tight">Smart Radar</span>
+            <span className="text-[17px] font-extrabold tracking-tight">Be Alert</span>
           </div>
           <div className="relative mt-8 lg:mt-0">
             <RadarScope center={radar.coords} radiusKm={3} posts={[]} size={210} />
@@ -71,7 +71,7 @@ export function Onboarding() {
 
           {step === 0 && (
             <div className="flex-1 animate-fade-in">
-              <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-ink">Welcome to Smart Radar</h1>
+              <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-ink">Welcome to Be Alert</h1>
               <p className="mt-2 text-[15px] text-ink-2">A hyperlocal community for alerts, deals, services, transport and neighbours you can trust.</p>
               <ul className="mt-7 space-y-4">
                 {HIGHLIGHTS.map((h) => (

@@ -475,7 +475,7 @@ function ConsoleStrip() {
         {isOwner ? <Crown className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="font-bold text-ink">{isOwner ? 'You’re the owner of Smart Radar' : 'You’re an admin'}</p>
+        <p className="font-bold text-ink">{isOwner ? 'You’re the owner of Be Alert' : 'You’re an admin'}</p>
         <p className="text-[13px] text-ink-2">
           {isOwner ? 'Manage every user, post, admin and app setting.' : 'Moderate posts, users and verifications.'} This page is the normal user view.
         </p>
@@ -494,10 +494,10 @@ function DemoNotice() {
   if (!demoReason || dismissed) return null;
   const why =
     demoReason === 'unreachable'
-      ? 'Your Supabase project couldn’t be reached, so Smart Radar is running on sample data.'
+      ? 'Your Supabase project couldn’t be reached, so Be Alert is running on sample data.'
       : demoReason === 'forced'
         ? 'Demo mode is switched on (VITE_DATA_MODE=demo).'
-        : 'Supabase isn’t configured yet, so Smart Radar is running on sample data.';
+        : 'Supabase isn’t configured yet, so Be Alert is running on sample data.';
   return (
     <div className="mb-4 flex items-start gap-3 rounded-2xl border border-warning-500/30 bg-warning-50 p-3.5 text-[13px] text-warning-700 dark:bg-warning-500/10 dark:text-warning-500">
       <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />

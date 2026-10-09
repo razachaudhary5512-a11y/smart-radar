@@ -276,7 +276,7 @@ function VerificationSection({ profile }: { profile: ProfileT }) {
           <div>
             <label className="label" htmlFor="cnic">CNIC number</label>
             <input id="cnic" className="input tracking-wider" inputMode="numeric" placeholder="42101-1234567-1" value={cnic} onChange={(e) => setCnic(formatCnic(e.target.value))} />
-            <p className="mt-1.5 text-xs text-ink-3">Stored securely and visible only to Smart Radar moderators — never shown publicly.</p>
+            <p className="mt-1.5 text-xs text-ink-3">Stored securely and visible only to Be Alert moderators — never shown publicly.</p>
           </div>
           <label className="flex items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-3">
             <span>
@@ -740,7 +740,7 @@ function PrivacySection({ profile }: { profile: ProfileT }) {
       ]);
       const pkg = {
         exported_at: new Date().toISOString(),
-        app: 'Smart Radar',
+        app: 'Be Alert',
         profile,
         posts: posts.map((p) => {
           const { author, ...rest } = p;
@@ -755,7 +755,7 @@ function PrivacySection({ profile }: { profile: ProfileT }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `smart-radar-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `be-alert-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Your data export is ready');
@@ -777,7 +777,7 @@ function PrivacySection({ profile }: { profile: ProfileT }) {
             Unblock all
           </button>
         </Row>
-        <Row title="Privacy Policy & Terms" body="How Smart Radar uses and protects your data.">
+        <Row title="Privacy Policy & Terms" body="How Be Alert uses and protects your data.">
           <div className="flex gap-2">
             <Link to="/privacy" className="btn-secondary btn-sm">Privacy</Link>
             <Link to="/terms" className="btn-secondary btn-sm">Terms</Link>
@@ -801,7 +801,7 @@ function PrivacySection({ profile }: { profile: ProfileT }) {
       <ConfirmDialog
         open={deleteOpen}
         title="Delete your account permanently?"
-        body="Your profile, posts, comments, photos, bookmarks and listings will be erased from Smart Radar. This cannot be undone."
+        body="Your profile, posts, comments, photos, bookmarks and listings will be erased from Be Alert. This cannot be undone."
         confirmLabel="Delete forever"
         tone="danger"
         busy={deleting}

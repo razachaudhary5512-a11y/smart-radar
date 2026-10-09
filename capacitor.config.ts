@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.smartradar.app',
-  appName: 'Smart Radar',
+  appId: 'com.bealert.app',
+  appName: 'Be Alert',
   webDir: 'dist',
   android: {
     // Serve the bundled web app from https://localhost (secure context → geolocation, crypto, etc.)

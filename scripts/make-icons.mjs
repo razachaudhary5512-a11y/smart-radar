@@ -1,4 +1,4 @@
-// Generates every app icon / splash PNG from the Smart Radar radar mark.
+// Generates every app icon / splash PNG from the Be Alert radar mark.
 //   node scripts/make-icons.mjs        → assets/* (for @capacitor/assets) + public/icon-*.png
 import { mkdirSync } from 'node:fs';
 import sharp from 'sharp';

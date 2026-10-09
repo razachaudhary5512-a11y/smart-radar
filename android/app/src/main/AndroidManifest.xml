@@ -23,12 +23,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Email sign-in links (com.smartradar.app://auth-callback) reopen the app -->
+            <!-- Email sign-in links (com.bealert.app://auth-callback) reopen the app -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.smartradar.app" android:host="auth-callback" />
+                <data android:scheme="com.bealert.app" android:host="auth-callback" />
             </intent-filter>
         </activity>
 

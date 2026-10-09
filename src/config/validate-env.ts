@@ -12,12 +12,12 @@ export function validateEnv(): void {
 
   if (!isSupabaseConfigured) {
     console.warn(
-      '%c[Smart Radar] Supabase is not configured — running in demo mode with local sample data.',
+      '%c[Be Alert] Supabase is not configured — running in demo mode with local sample data.',
       'color:#f59e0b;font-weight:bold'
     );
   }
   const off = optional.filter(([, on]) => !on).map(([name]) => name);
-  if (off.length) console.info('[Smart Radar] Optional integrations not configured:', off.join(', '));
+  if (off.length) console.info('[Be Alert] Optional integrations not configured:', off.join(', '));
   // Secret-leak detection runs at build time in vite.config.ts (reading
   // import.meta.env as a whole here would itself bundle every VITE_ value).
 }

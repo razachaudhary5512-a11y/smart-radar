@@ -71,7 +71,7 @@ function save() {
     try {
       localStorage.setItem(DB_KEY, JSON.stringify(db));
     } catch (e) {
-      console.warn('[Smart Radar demo] Could not persist demo data (storage full?)', e);
+      console.warn('[Be Alert demo] Could not persist demo data (storage full?)', e);
     }
   }, 50);
 }

@@ -1,7 +1,7 @@
 {
-  "name": "smart-radar",
+  "name": "be-alert",
   "private": true,
-  "version": "2.4.0",
+  "version": "2.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "build:pages": "vite build --mode pages && node scripts/spa-fallback.mjs",
-    "deploy:pages": "npm run build:pages && gh-pages -d dist --dotfiles -m \"Deploy Smart Radar\"",
+    "deploy:pages": "npm run build:pages && gh-pages -d dist --dotfiles -m \"Deploy Be Alert\"",
     "build:android": "vite build --mode android && cap sync android",
     "apk": "npm run build:android && cd android && gradlew.bat assembleDebug",
     "icons": "node scripts/make-icons.mjs",
@@ -54,7 +54,7 @@
     "typescript-eslint": "^8.3.0",
     "vite": "^5.4.2"
   },
-  "description": "Smart Radar — hyperlocal community app: alerts, deals, services, transport and community within 1–5 km.",
+  "description": "Be Alert — hyperlocal community app: alerts, deals, services, transport and community within 1–50 km.",
   "overrides": {
     "@grpc/grpc-js": "^1.14.0"
   }

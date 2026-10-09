@@ -36,7 +36,7 @@ export function isPaymentsEnabled(): boolean {
 }
 
 const notImplemented = (fn: string) =>
-  new Error(`[Smart Radar / payments] ${fn}() is not implemented yet. See src/services/payments.ts for the activation checklist.`);
+  new Error(`[Be Alert / payments] ${fn}() is not implemented yet. See src/services/payments.ts for the activation checklist.`);
 
 export async function pay(provider: PaymentProvider, request: PaymentRequest): Promise<PaymentResult> {
   void provider;

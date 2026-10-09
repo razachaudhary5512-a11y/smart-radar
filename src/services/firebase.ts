@@ -37,7 +37,7 @@ export async function initFirebase(): Promise<import('firebase/app').FirebaseApp
 
   if (!isFirebaseConfigured()) {
     console.warn(
-      '[Smart Radar / firebase] Firebase is not configured. ' +
+      '[Be Alert / firebase] Firebase is not configured. ' +
       'Push notifications will be disabled. Add the VITE_FIREBASE_* keys to .env to enable.'
     );
     return null;
@@ -60,7 +60,7 @@ export async function initFirebase(): Promise<import('firebase/app').FirebaseApp
     appId:             ENV.firebase.appId!,
   });
 
-  console.info('[Smart Radar / firebase] ✅ Firebase initialised (project: ' + ENV.firebase.projectId + ')');
+  console.info('[Be Alert / firebase] ✅ Firebase initialised (project: ' + ENV.firebase.projectId + ')');
   return _app;
 }
 
@@ -77,13 +77,13 @@ export async function initFirebase(): Promise<import('firebase/app').FirebaseApp
  */
 export async function requestNotificationPermission(vapidKey: string | undefined = ENV.firebase.vapidKey): Promise<string | null> {
   if (!isFirebaseConfigured()) {
-    console.warn('[Smart Radar / firebase] requestNotificationPermission() skipped — Firebase not configured.');
+    console.warn('[Be Alert / firebase] requestNotificationPermission() skipped — Firebase not configured.');
     return null;
   }
 
   // Notifications are only available in secure contexts
   if (!('Notification' in window)) {
-    console.warn('[Smart Radar / firebase] Notifications API is not available in this browser.');
+    console.warn('[Be Alert / firebase] Notifications API is not available in this browser.');
     return null;
   }
 
@@ -93,17 +93,17 @@ export async function requestNotificationPermission(vapidKey: string | undefined
   try {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      console.info('[Smart Radar / firebase] Notification permission denied by user.');
+      console.info('[Be Alert / firebase] Notification permission denied by user.');
       return null;
     }
 
     const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
     if (!(await isSupported())) {
-      console.warn('[Smart Radar / firebase] Push messaging is not supported in this browser.');
+      console.warn('[Be Alert / firebase] Push messaging is not supported in this browser.');
       return null;
     }
     if (!vapidKey) {
-      console.warn('[Smart Radar / firebase] VITE_FIREBASE_VAPID_KEY is missing — web push needs it (Firebase → Cloud Messaging → Web Push certificates).');
+      console.warn('[Be Alert / firebase] VITE_FIREBASE_VAPID_KEY is missing — web push needs it (Firebase → Cloud Messaging → Web Push certificates).');
       return null;
     }
 
@@ -120,10 +120,10 @@ export async function requestNotificationPermission(vapidKey: string | undefined
     const registration = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}firebase-messaging-sw.js?${qs}`);
 
     const token = await getToken(_messaging, { vapidKey, serviceWorkerRegistration: registration });
-    console.info('[Smart Radar / firebase] ✅ FCM registration token obtained.');
+    console.info('[Be Alert / firebase] ✅ FCM registration token obtained.');
     return token;
   } catch (err) {
-    console.error('[Smart Radar / firebase] Failed to get FCM token:', err);
+    console.error('[Be Alert / firebase] Failed to get FCM token:', err);
     return null;
   }
 }

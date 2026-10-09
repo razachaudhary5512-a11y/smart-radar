@@ -57,7 +57,7 @@ export async function registerBackButton(goBack: () => void, atRoot: () => boole
 }
 
 /** Where sign-in emails send the user back to inside the Android app. */
-export const APP_AUTH_CALLBACK = 'com.smartradar.app://auth-callback';
+export const APP_AUTH_CALLBACK = 'com.bealert.app://auth-callback';
 
 /**
  * Calls `handler` with every deep link that opens the app (including the one

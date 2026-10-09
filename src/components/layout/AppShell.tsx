@@ -96,7 +96,7 @@ function NamePrompt() {
   const [busy, setBusy] = useState(false);
   const open = Boolean(user && profile && !profile.display_name?.trim());
   return (
-    <Sheet open={open} onClose={() => {}} title="Welcome to Smart Radar! 👋" description="What should neighbours call you? This name appears on your posts and comments." size="sm">
+    <Sheet open={open} onClose={() => {}} title="Welcome to Be Alert! 👋" description="What should neighbours call you? This name appears on your posts and comments." size="sm">
       <form
         onSubmit={async (e) => {
           e.preventDefault();

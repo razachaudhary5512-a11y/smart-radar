@@ -25,7 +25,7 @@ function Contact() {
       Questions or requests: <a className="font-semibold text-primary-600 underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
     </p>
   ) : (
-    <p>Questions or requests: use “Report” on any post, or contact the Smart Radar team through the app.</p>
+    <p>Questions or requests: use “Report” on any post, or contact the Be Alert team through the app.</p>
   );
 }
 
@@ -33,7 +33,7 @@ export function PrivacyPolicy() {
   return (
     <Doc title="Privacy Policy">
       <p>
-        Smart Radar (“we”, “the app”) is a neighbourhood app that shows posts, alerts and services near you. This policy explains what we collect, why, and the
+        Be Alert (“we”, “the app”) is a neighbourhood app that shows posts, alerts and services near you. This policy explains what we collect, why, and the
         choices you have. We do <strong>not</strong> sell your data and we do <strong>not</strong> show third-party ads.
       </p>
 
@@ -99,7 +99,7 @@ export function PrivacyPolicy() {
 
       <section>
         <h2>Children</h2>
-        <p>Smart Radar is not intended for children under 13, and we do not knowingly collect their data.</p>
+        <p>Be Alert is not intended for children under 13, and we do not knowingly collect their data.</p>
       </section>
 
       <section>
@@ -117,7 +117,7 @@ export function PrivacyPolicy() {
 export function TermsOfUse() {
   return (
     <Doc title="Terms of Use">
-      <p>By using Smart Radar you agree to these terms. If you do not agree, please do not use the app.</p>
+      <p>By using Be Alert you agree to these terms. If you do not agree, please do not use the app.</p>
 
       <section>
         <h2>Your account</h2>
@@ -141,7 +141,7 @@ export function TermsOfUse() {
       <section>
         <h2>Moderation</h2>
         <p>
-          The Smart Radar team may hide or remove content and suspend or remove accounts that break these terms or put others at risk, with or without
+          The Be Alert team may hide or remove content and suspend or remove accounts that break these terms or put others at risk, with or without
           notice. You can report any post you think breaks the rules.
         </p>
       </section>
@@ -149,7 +149,7 @@ export function TermsOfUse() {
       <section>
         <h2>Emergencies</h2>
         <p>
-          Smart Radar is not an emergency service. In an emergency, always call your local emergency number first. Information posted by users may be
+          Be Alert is not an emergency service. In an emergency, always call your local emergency number first. Information posted by users may be
           wrong or out of date.
         </p>
       </section>
@@ -157,7 +157,7 @@ export function TermsOfUse() {
       <section>
         <h2>Your content</h2>
         <p>
-          You own what you post. By posting, you allow Smart Radar to display it to other users of the app. You can delete your posts or your whole account
+          You own what you post. By posting, you allow Be Alert to display it to other users of the app. You can delete your posts or your whole account
           at any time.
         </p>
       </section>
@@ -165,7 +165,7 @@ export function TermsOfUse() {
       <section>
         <h2>Deals between users</h2>
         <p>
-          Listings, rides, help offers and sales are between users. Smart Radar is not a party to these arrangements and is not responsible for them.
+          Listings, rides, help offers and sales are between users. Be Alert is not a party to these arrangements and is not responsible for them.
           Meet in safe places and use your judgement.
         </p>
       </section>

@@ -15,7 +15,7 @@ export async function getBrowserLocation(timeoutMs = 8000): Promise<GeoResult> {
     return {
       coords: DEFAULT_COORDS,
       granted: false,
-      reason: r.error === 'denied' ? 'Location permission was denied. Enable it in Android Settings → Apps → Smart Radar.' : 'Could not get your location.',
+      reason: r.error === 'denied' ? 'Location permission was denied. Enable it in Android Settings → Apps → Be Alert.' : 'Could not get your location.',
     };
   }
   return new Promise((resolve) => {

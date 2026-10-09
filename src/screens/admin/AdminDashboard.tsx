@@ -90,7 +90,7 @@ export function AdminDashboard() {
         <div className="flex h-[72px] items-center gap-2.5 px-5">
           <LogoMark size={32} />
           <div>
-            <p className="text-[15px] font-extrabold leading-none tracking-tight">Smart Radar</p>
+            <p className="text-[15px] font-extrabold leading-none tracking-tight">Be Alert</p>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-white/50">{isOwner ? 'Owner console' : 'Admin console'}</p>
           </div>
         </div>
@@ -255,7 +255,7 @@ function Overview({ data, loading, goto }: { data: AdminOverview | undefined; lo
           <div className="flex-1">
             <p className="text-sm text-white/70">{formatDate(new Date().toISOString(), { weekday: 'long', day: 'numeric', month: 'long' })}</p>
             <h2 className="mt-1 text-2xl font-extrabold tracking-tight">{open ? `${open} item${open === 1 ? '' : 's'} need your review` : 'All caught up 🎉'}</h2>
-            <p className="mt-1 text-sm text-white/70">Moderation keeps Smart Radar safe and trusted.</p>
+            <p className="mt-1 text-sm text-white/70">Moderation keeps Be Alert safe and trusted.</p>
           </div>
           <div className="grid gap-2 sm:grid-cols-3 lg:w-[560px]">
             {todo.map((t) => (
@@ -1265,7 +1265,7 @@ function TeamAdmin() {
         <div className="flex items-center justify-between gap-3 px-5 py-4">
           <div>
             <h2 className="font-bold text-ink">Your team</h2>
-            <p className="text-[13px] text-ink-2">People who can moderate Smart Radar.</p>
+            <p className="text-[13px] text-ink-2">People who can moderate Be Alert.</p>
           </div>
           <button className="btn-primary btn-sm" onClick={() => setAddOpen(true)}>
             <UserPlus className="h-4 w-4" /> Add admin

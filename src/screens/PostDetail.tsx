@@ -282,7 +282,7 @@ function PostView({ post, onChange }: { post: PostWithRelations; onChange(p: Pos
                     <Phone className="h-4 w-4" /> Call
                   </a>
                   <a
-                    href={whatsappLink(contactPhone, `Hi! I saw your post “${post.title}” on Smart Radar.`)}
+                    href={whatsappLink(contactPhone, `Hi! I saw your post “${post.title}” on Be Alert.`)}
                     target="_blank"
                     rel="noreferrer"
                     className="btn bg-[#25D366] text-white hover:brightness-95"
@@ -634,7 +634,7 @@ function AuthorCard({ post }: { post: PostWithRelations }) {
         {a && <TrustRing score={a.trust_score} size={48} />}
       </div>
       <div className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-xs text-ink-2">
-        {v === 'valid' && '✅ CNIC verified by Smart Radar moderators.'}
+        {v === 'valid' && '✅ CNIC verified by Be Alert moderators.'}
         {v === 'due_soon' && '✅ CNIC verified — renewal due soon.'}
         {v === 'expired' && '⚠️ Verification has expired.'}
         {!v && 'Not CNIC verified yet — follow the safety tips when dealing in person.'}

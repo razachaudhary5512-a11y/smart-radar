@@ -21,7 +21,7 @@ function ProviderActions({ p, size = 'sm' }: { p: ProviderListing; size?: 'sm' |
         <Phone className="h-4 w-4" />
       </a>
       <a
-        href={whatsappLink(p.phone, `Hi ${p.business_name}, I found you on Smart Radar.`)}
+        href={whatsappLink(p.phone, `Hi ${p.business_name}, I found you on Be Alert.`)}
         target="_blank"
         rel="noreferrer"
         aria-label={`WhatsApp ${p.business_name}`}
@@ -42,7 +42,7 @@ export function ProvidersCard() {
       <h3 className="flex items-center gap-2 font-bold text-ink">
         <BadgeCheck className="h-4 w-4 fill-primary-600 text-white dark:text-surface" /> Verified local businesses
       </h3>
-      <p className="mt-0.5 text-xs text-ink-3">Reviewed and approved by Smart Radar moderators.</p>
+      <p className="mt-0.5 text-xs text-ink-3">Reviewed and approved by Be Alert moderators.</p>
       <ul className="mt-3 space-y-1">
         {data.slice(0, 4).map((p) => (
           <li key={p.id} className="-mx-2 flex items-center gap-3 rounded-xl p-2 hover:bg-surface-2">

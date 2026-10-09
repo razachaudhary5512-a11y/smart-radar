@@ -52,7 +52,7 @@ export function AdminLogin() {
         <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:18px_18px]" />
         <div className="relative flex items-center gap-2.5">
           <LogoMark size={36} />
-          <span className="text-lg font-extrabold tracking-tight">Smart Radar · Admin</span>
+          <span className="text-lg font-extrabold tracking-tight">Be Alert · Admin</span>
         </div>
         <div className="relative max-w-md">
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight">Keep every neighbourhood safe and trusted.</h1>
