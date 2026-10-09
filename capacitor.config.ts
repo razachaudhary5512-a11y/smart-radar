@@ -7,6 +7,8 @@ const config: CapacitorConfig = {
   android: {
     // Serve the bundled web app from https://localhost (secure context → geolocation, crypto, etc.)
     allowMixedContent: false,
+    // Never allow attaching Chrome DevTools to the release app.
+    webContentsDebuggingEnabled: false,
   },
   server: {
     androidScheme: 'https',

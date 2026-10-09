@@ -203,15 +203,14 @@ export async function completeAuthFromUrl(url: string): Promise<{ error: string 
   const hash = new URLSearchParams(u.hash.replace(/^#/, ''));
   const err = u.searchParams.get('error_description') ?? hash.get('error_description');
   if (err) return { error: err.replace(/\+/g, ' ') };
+  // Only the PKCE code is accepted. Raw tokens in a link are ignored: they could
+  // belong to someone else's account (login-CSRF / session swap).
   const code = u.searchParams.get('code');
   if (code) {
     const { error } = await sb().auth.exchangeCodeForSession(code);
-    return { error: error?.message ?? null };
-  }
-  const access_token = hash.get('access_token');
-  const refresh_token = hash.get('refresh_token');
-  if (access_token && refresh_token) {
-    const { error } = await sb().auth.setSession({ access_token, refresh_token });
+    if (error && /verifier/i.test(error.message)) {
+      return { error: 'Please open the sign-in link on the same phone where you requested it.' };
+    }
     return { error: error?.message ?? null };
   }
   return { error: null };

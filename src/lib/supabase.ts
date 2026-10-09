@@ -12,7 +12,9 @@ export function getSupabase(): SupabaseClient | null {
   if (!isSupabaseConfigured) return null;
   if (!client) {
     client = createClient(ENV.supabase.url!, ENV.supabase.anonKey!, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      // PKCE: a sign-in link only works in the app/browser that asked for it, so a
+      // crafted link can't silently log someone into another person's account.
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
     });
   }
   return client;
