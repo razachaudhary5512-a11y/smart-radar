@@ -1,79 +1,26 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { Download, RefreshCw, Share, SquarePlus, WifiOff, X } from 'lucide-react';
-import { Sheet } from '@/components/ui';
+import { RefreshCw, Smartphone, WifiOff, X } from 'lucide-react';
+import { ENV } from '@/config/env';
 import { isNative } from '@/lib/native';
 
 /**
- * Web app (PWA) behaviour for the browser version:
- *  - "Install app" (Android/desktop Chrome & Edge prompt, iPhone instructions)
+ * Website extras (inert inside the Android app):
  *  - "New version available" bar when an update is deployed
  *  - offline indicator
- * Everything here is inert inside the Android app (Capacitor).
+ *  - "Get the Android app" link to the Google Play listing
+ * The website itself is a normal site — it is intentionally not installable.
  */
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
-
 interface PwaApi {
-  /** True when the app can be installed from this browser (or iOS instructions apply). */
-  canInstall: boolean;
-  /** Running as an installed app (home screen / desktop window). */
-  installed: boolean;
-  install(): void;
+  /** Link to the Android app (Google Play), when configured and we're on the website. */
+  androidAppUrl: string | null;
 }
 
-const PwaContext = createContext<PwaApi>({ canInstall: false, installed: false, install: () => {} });
-
-const isIOS = () =>
-  typeof navigator !== 'undefined' &&
-  (/iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
-
-const isStandalone = () =>
-  typeof window !== 'undefined' &&
-  (window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true);
+const PwaContext = createContext<PwaApi>({ androidAppUrl: null });
 
 export function PwaProvider({ children }: { children: ReactNode }) {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installed, setInstalled] = useState(isStandalone);
-  const [iosHelp, setIosHelp] = useState(false);
-
-  useEffect(() => {
-    if (isNative) return;
-    const onPrompt = (e: Event) => {
-      e.preventDefault(); // show our own button instead of the mini-infobar
-      setDeferred(e as BeforeInstallPromptEvent);
-    };
-    const onInstalled = () => {
-      setInstalled(true);
-      setDeferred(null);
-    };
-    window.addEventListener('beforeinstallprompt', onPrompt);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onPrompt);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
-  }, []);
-
-  const install = useCallback(async () => {
-    if (deferred) {
-      await deferred.prompt();
-      const { outcome } = await deferred.userChoice;
-      if (outcome === 'accepted') setInstalled(true);
-      setDeferred(null);
-    } else if (isIOS()) {
-      setIosHelp(true);
-    }
-  }, [deferred]);
-
-  const value = useMemo<PwaApi>(
-    () => ({ canInstall: !isNative && !installed && (Boolean(deferred) || isIOS()), installed, install }),
-    [deferred, installed, install]
-  );
-
+  const value = useMemo<PwaApi>(() => ({ androidAppUrl: !isNative && ENV.androidAppUrl ? ENV.androidAppUrl : null }), []);
   return (
     <PwaContext.Provider value={value}>
       {children}
@@ -81,7 +28,6 @@ export function PwaProvider({ children }: { children: ReactNode }) {
         <>
           <UpdateBar />
           <OfflinePill />
-          <IosInstallSheet open={iosHelp} onClose={() => setIosHelp(false)} />
         </>
       )}
     </PwaContext.Provider>
@@ -137,37 +83,13 @@ function OfflinePill() {
   );
 }
 
-function IosInstallSheet({ open, onClose }: { open: boolean; onClose(): void }) {
+/** "Get the Android app" link for the website's menus; hidden inside the app itself. */
+export function GetAndroidAppButton({ className }: { className?: string }) {
+  const { androidAppUrl } = usePwa();
+  if (!androidAppUrl) return null;
   return (
-    <Sheet open={open} onClose={onClose} title="Install Be Alert" description="Add it to your Home Screen — it opens full-screen like a normal app." size="sm">
-      <ol className="space-y-3 text-sm text-ink">
-        <li className="flex items-center gap-3 rounded-xl bg-surface-2 p-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600">
-            <Share className="h-4 w-4" />
-          </span>
-          Tap the <b>Share</b> button at the bottom of Safari.
-        </li>
-        <li className="flex items-center gap-3 rounded-xl bg-surface-2 p-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600/10 text-primary-600">
-            <SquarePlus className="h-4 w-4" />
-          </span>
-          Choose <b>Add to Home Screen</b>, then tap <b>Add</b>.
-        </li>
-      </ol>
-      <button className="btn-primary mt-5 w-full" onClick={onClose}>
-        Got it
-      </button>
-    </Sheet>
-  );
-}
-
-/** "Install app" button for menus; renders nothing when not installable. */
-export function InstallAppButton({ className }: { className?: string }) {
-  const { canInstall, install } = usePwa();
-  if (!canInstall) return null;
-  return (
-    <button onClick={install} className={className ?? 'btn-secondary w-full'}>
-      <Download className="h-4 w-4" /> Install app
-    </button>
+    <a href={androidAppUrl} target="_blank" rel="noopener noreferrer" className={className ?? 'btn-secondary w-full'}>
+      <Smartphone className="h-4 w-4" /> Get the Android app
+    </a>
   );
 }

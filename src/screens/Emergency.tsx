@@ -22,7 +22,7 @@ import { useAuth } from '@/lib/auth';
 import { useQuery } from '@/lib/hooks';
 import { shareContent } from '@/lib/native';
 import { useRadar } from '@/lib/location-context';
-import { formatDistance, googleMapsLink } from '@/lib/location';
+import { formatDistance, getBrowserLocation, googleMapsLink } from '@/lib/location';
 import { getCategory, headlineValue } from '@/lib/categories';
 import { cn, telLink, timeAgo, toE164PK, whatsappLink } from '@/lib/format';
 
@@ -39,18 +39,24 @@ export function Emergency() {
   const contacts = useQuery(() => api.listEmergencyContacts(), [api], { scopes: ['emergency'] });
   const trusted = useQuery(() => (user ? api.listTrustedContacts(user.id) : Promise.resolve([])), [api, user?.id], { scopes: ['trusted'] });
   const alerts = useQuery(
-    () => api.listPosts({ center: radar.coords, radiusKm: Math.max(5, radar.radiusKm), sort: 'nearest' }, user?.id),
-    [api, radar.coords.lat, radar.coords.lng, user?.id]
+    () => (radar.located ? api.listPosts({ center: radar.coords, radiusKm: Math.max(5, radar.radiusKm), sort: 'nearest' }, user?.id) : Promise.resolve([])),
+    [api, radar.located, radar.coords.lat, radar.coords.lng, user?.id]
   );
   const urgent = (alerts.data ?? []).filter((p) => getCategory(p.category).isUrgent);
 
-  const here = radar.gpsCoords ?? radar.coords;
-  const sosMessage = `I need help. My current location: ${googleMapsLink(here)} (sent from Be Alert)`;
+  // SOS messages only ever contain the phone's real GPS position — never a chosen area.
+  const here = radar.gpsCoords;
+  const sosText = (c: { lat: number; lng: number } | null) =>
+    c ? `I need help. My current location: ${googleMapsLink(c)} (sent from Be Alert)` : 'I need help. Please call me as soon as possible. (sent from Be Alert)';
+  const sosMessage = sosText(here);
 
   async function shareLocation() {
-    if (!radar.gpsCoords) await radar.requestLocation();
+    // Always take a fresh fix right now, so the shared location is current.
+    const fix = await getBrowserLocation();
+    if (fix.granted) radar.requestLocation();
+    else toast.error('Location unavailable', 'Sharing a help message without your location — turn on GPS to include it.');
     try {
-      const how = await shareContent({ title: 'My location', text: sosMessage });
+      const how = await shareContent({ title: 'My location', text: sosText(fix.granted ? fix.coords : here) });
       if (how === 'copied') toast.success('Location message copied', 'Paste it into any chat or SMS.');
     } catch {
       toast.error('Could not share location');
@@ -202,7 +208,7 @@ export function Emergency() {
                 <MapPin className="h-4 w-4 text-primary-600" /> Your location
               </h2>
               <p className="mt-1 text-[13px] text-ink-2">
-                {radar.gpsCoords ? `${here.lat.toFixed(5)}, ${here.lng.toFixed(5)}` : 'Location not shared yet.'}
+                {here ? `${here.lat.toFixed(5)}, ${here.lng.toFixed(5)}` : 'Location is off — turn on GPS so you can share it in an emergency.'}
               </p>
               <div className="mt-3 flex gap-2">
                 {!radar.gpsCoords && (
@@ -210,9 +216,11 @@ export function Emergency() {
                     Enable GPS
                   </button>
                 )}
-                <a href={googleMapsLink(here)} target="_blank" rel="noreferrer" className="btn-secondary btn-sm flex-1">
-                  Open in Maps
-                </a>
+                {here && (
+                  <a href={googleMapsLink(here)} target="_blank" rel="noreferrer" className="btn-secondary btn-sm flex-1">
+                    Open in Maps
+                  </a>
+                )}
               </div>
             </section>
           </aside>

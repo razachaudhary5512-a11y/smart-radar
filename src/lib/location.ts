@@ -3,7 +3,7 @@ import { isNative, nativePosition } from './native';
 
 export type { Coords };
 
-/** Fallback when GPS is unavailable or denied (Karachi city centre). */
+/** Internal placeholder only — never shown or used to load content (see `located`). */
 export const DEFAULT_COORDS: Coords = { lat: 24.8607, lng: 67.0011 };
 
 export type GeoResult = { coords: Coords; granted: true } | { coords: Coords; granted: false; reason: string };

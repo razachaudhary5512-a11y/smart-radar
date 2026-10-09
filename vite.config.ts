@@ -70,52 +70,21 @@ function contentSecurityPolicy(mode: string): Plugin {
 }
 
 /**
- * Installable web app (PWA): manifest, icons, offline app shell and smart caching.
+ * Service worker for the website: instant loading, offline app shell and smart caching.
  * Not used in the Android build (Capacitor ships the files inside the APK).
  */
-function webApp(mode: string, base: string) {
+function webApp(mode: string) {
   return VitePWA({
     disable: mode === 'android',
     registerType: 'prompt',
     injectRegister: null, // registered from src/components/PwaManager.tsx
-    includeAssets: ['favicon.svg', 'favicon-64.png', 'apple-touch-icon.png'],
-    manifest: {
-      id: base,
-      name: 'Be Alert — Your Neighbourhood, Live',
-      short_name: 'Be Alert',
-      description: 'Alerts, deals, services, jobs, rides and community — everything happening within 1–50 km of you.',
-      lang: 'en',
-      dir: 'ltr',
-      start_url: base,
-      scope: base,
-      display: 'standalone',
-      display_override: ['standalone', 'minimal-ui'],
-      background_color: '#f6f7fb',
-      theme_color: '#2549ea',
-      categories: ['social', 'news', 'lifestyle', 'utilities'],
-      icons: [
-        { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-        { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-        { src: 'maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-      ],
-      shortcuts: [
-        { name: 'New post', short_name: 'Post', url: `${base}create`, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] },
-        { name: 'Live map', short_name: 'Map', url: `${base}map`, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] },
-        { name: 'Emergency', short_name: 'SOS', url: `${base}emergency`, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] },
-      ],
-      screenshots: [
-        { src: 'screenshots/phone-feed.webp', sizes: '585x1266', type: 'image/webp', form_factor: 'narrow', label: 'Everything happening near you' },
-        { src: 'screenshots/phone-map.webp', sizes: '585x1266', type: 'image/webp', form_factor: 'narrow', label: 'Live map of local alerts' },
-        { src: 'screenshots/phone-post.webp', sizes: '585x1266', type: 'image/webp', form_factor: 'narrow', label: 'Help neighbours in an emergency' },
-        { src: 'screenshots/phone-emergency.webp', sizes: '585x1266', type: 'image/webp', form_factor: 'narrow', label: 'One-tap emergency numbers' },
-        { src: 'screenshots/desktop-feed.webp', sizes: '1280x800', type: 'image/webp', form_factor: 'wide', label: 'Your neighbourhood feed' },
-        { src: 'screenshots/desktop-map.webp', sizes: '1280x800', type: 'image/webp', form_factor: 'wide', label: 'Live map' },
-      ],
-    },
+    // No web app manifest: the website is a normal site (not installable). The installable
+    // app is the Android app on Google Play.
+    manifest: false,
     workbox: {
       globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
       globIgnores: ['**/screenshots/**', '**/icon-512.png', '**/maskable-512.png', '**/firebase-messaging-sw.js'],
-      navigateFallback: `${base}index.html`,
+      navigateFallback: 'index.html',
       navigateFallbackDenylist: [/firebase-messaging-sw\.js$/],
       cleanupOutdatedCaches: true,
       // Personal data (Supabase API) is never cached — only public, shared resources.
@@ -151,7 +120,7 @@ export default defineConfig(({ mode }) => {
   const base = mode === 'pages' ? '/smart-radar/' : '/';
   return {
   base,
-  plugins: [react(), guardSecrets(mode), contentSecurityPolicy(mode), webApp(mode, base)],
+  plugins: [react(), guardSecrets(mode), contentSecurityPolicy(mode), webApp(mode)],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

@@ -52,7 +52,7 @@ export function useQuery<T>(fn: () => Promise<T>, deps: unknown[], opts: { scope
     if (!enabled) return;
     const list = scopeKey.split(',');
     return onDataChange((s) => {
-      if (list.includes(s) || list.includes('*')) run(true);
+      if (s === 'sync' || list.includes(s) || list.includes('*')) run(true);
     });
   }, [enabled, run, scopeKey]);
 

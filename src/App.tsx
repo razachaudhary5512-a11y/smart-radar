@@ -12,6 +12,7 @@ import { AppShell, PageLoader } from '@/components/layout/AppShell';
 import { AuthSheet } from '@/components/AuthSheet';
 import { LogoMark } from '@/components/layout/Logo';
 import { HomeFeed } from '@/screens/HomeFeed';
+import { LocationGate } from '@/components/radar/LocationGate';
 import { AdminRoute } from '@/screens/admin/AdminRoute';
 
 const named = <K extends string>(loader: () => Promise<Record<K, React.ComponentType>>, name: K) =>
@@ -115,10 +116,10 @@ export default function App() {
                       }
                     />
                     <Route element={<AppShell />}>
-                      <Route index element={<HomeFeed />} />
-                      <Route path="map" element={<MapView />} />
-                      <Route path="search" element={<SearchScreen />} />
-                      <Route path="create" element={<CreatePost />} />
+                      <Route index element={<LocationGate><HomeFeed /></LocationGate>} />
+                      <Route path="map" element={<LocationGate><MapView /></LocationGate>} />
+                      <Route path="search" element={<LocationGate><SearchScreen /></LocationGate>} />
+                      <Route path="create" element={<LocationGate><CreatePost /></LocationGate>} />
                       <Route path="edit/:id" element={<CreatePost />} />
                       <Route path="post/:id" element={<PostDetail />} />
                       <Route path="my-posts" element={<MyPosts />} />

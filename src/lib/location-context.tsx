@@ -15,7 +15,12 @@ export type AreaSource =
   | { kind: 'city'; label: string; city: string; country: string; countryCode: string };
 
 interface LocationContextValue {
-  /** Centre of the radar (GPS or a chosen area). */
+  /**
+   * True once we know where to centre the radar: the device's current location, or an
+   * area the user picked. Screens that show nearby content wait for this (see LocationGate).
+   */
+  located: boolean;
+  /** Centre of the radar (GPS or a chosen area). Only meaningful when `located`. */
   coords: Coords;
   /** The device's own position (if known). */
   gpsCoords: Coords | null;
@@ -35,13 +40,17 @@ interface LocationContextValue {
 const LocationContext = createContext<LocationContextValue | undefined>(undefined);
 const RADIUS_KEY = 'sr_radius_km';
 const LAST_KEY = 'sr_last_coords';
+// Last area the user picked by hand. Used only as a fallback when GPS is unavailable;
+// every visit starts from the device's current location.
 const AREA_KEY = 'sr_area_v1';
+// The area picked during this visit (cleared when the app/browser tab is closed).
+const SESSION_AREA_KEY = 'sr_area_session';
 
 type StoredArea = { area: Exclude<AreaSource, { kind: 'gps' }>; coords: Coords };
 
-function readArea(): StoredArea | null {
+function readArea(storage: Storage = localStorage, key = AREA_KEY): StoredArea | null {
   try {
-    const raw = localStorage.getItem(AREA_KEY);
+    const raw = storage.getItem(key);
     return raw ? (JSON.parse(raw) as StoredArea) : null;
   } catch {
     return null;
@@ -50,12 +59,24 @@ function readArea(): StoredArea | null {
 
 function writeArea(v: StoredArea | null) {
   try {
-    if (v) localStorage.setItem(AREA_KEY, JSON.stringify(v));
-    else localStorage.removeItem(AREA_KEY);
+    if (v) {
+      sessionStorage.setItem(SESSION_AREA_KEY, JSON.stringify(v));
+      localStorage.setItem(AREA_KEY, JSON.stringify(v));
+    } else {
+      sessionStorage.removeItem(SESSION_AREA_KEY);
+    }
   } catch {
     /* ignore */
   }
 }
+
+const readSessionArea = () => {
+  try {
+    return readArea(sessionStorage, SESSION_AREA_KEY);
+  } catch {
+    return null;
+  }
+};
 
 function readNumber(key: string, fallback: number) {
   try {
@@ -80,9 +101,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [gpsCoords, setGpsCoords] = useState<Coords | null>(readLast);
   const [gpsStatus, setGpsStatus] = useState<LocationContextValue['gpsStatus']>('idle');
   const [gpsError, setGpsError] = useState<string | null>(null);
-  // The chosen city/area is remembered between visits.
-  const [area, setArea] = useState<AreaSource>(() => readArea()?.area ?? { kind: 'gps' });
-  const [areaCoords, setAreaCoords] = useState<Coords | null>(() => readArea()?.coords ?? null);
+  // Each visit starts on the device's current location; a picked area lasts for this visit only.
+  const [area, setArea] = useState<AreaSource>(() => readSessionArea()?.area ?? { kind: 'gps' });
+  const [areaCoords, setAreaCoords] = useState<Coords | null>(() => readSessionArea()?.coords ?? null);
   const [gpsLabel, setGpsLabel] = useState<string>('');
   const [radius, setRadius] = useState(() => clampRadius(readNumber(RADIUS_KEY, 3)));
   // Read live (not once at start-up): onboarding saves the choice after the app has mounted.
@@ -139,20 +160,14 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Ask for location on start only if the browser already granted it (no surprise prompt).
+  // Get the device's current location every time the app opens (asks permission if needed).
   useEffect(() => {
-    const perms = (navigator as Navigator & { permissions?: Permissions }).permissions;
-    if (!perms?.query) return;
-    perms
-      .query({ name: 'geolocation' as PermissionName })
-      .then((s) => {
-        if (s.state === 'granted') requestLocation();
-        else if (s.state === 'denied') setGpsStatus('denied');
-      })
-      .catch(() => {});
+    requestLocation();
   }, [requestLocation]);
 
-  const center = area.kind === 'gps' ? gpsCoords ?? DEFAULT_COORDS : areaCoords ?? gpsCoords ?? DEFAULT_COORDS;
+  // GPS unavailable/denied → the last area the user picked themselves, if any. Never a built-in city.
+  const fallback = useMemo(() => (area.kind === 'gps' && !gpsCoords && gpsStatus === 'denied' ? readArea() : null), [area.kind, gpsCoords, gpsStatus]);
+  const center: Coords | null = area.kind === 'gps' ? gpsCoords ?? fallback?.coords ?? null : areaCoords ?? gpsCoords;
 
   // Friendly neighbourhood name for the GPS position.
   useEffect(() => {
@@ -183,11 +198,17 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       area.kind === 'gps'
         ? gpsCoords
           ? gpsLabel || 'Your location'
-          : 'Karachi (default)'
+          : fallback
+            ? fallback.area.label
+            : gpsStatus === 'denied'
+              ? 'Location is off'
+              : 'Finding your location…'
         : area.label;
     const countryCode = area.kind === 'city' ? area.countryCode : area.kind === 'custom' && area.countryCode ? area.countryCode : 'pk';
     return {
-      coords: center,
+      located: center !== null,
+      // Placeholder only while not located — screens wait for `located` before using it.
+      coords: center ?? DEFAULT_COORDS,
       gpsCoords,
       gpsStatus,
       gpsError,
@@ -209,7 +230,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         if (!gpsCoords) requestLocation();
       },
     };
-  }, [center, gpsCoords, gpsStatus, gpsError, gpsLabel, area, radius, setRadiusKm, requestLocation]);
+  }, [center, fallback, gpsCoords, gpsStatus, gpsError, gpsLabel, area, radius, setRadiusKm, requestLocation]);
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 }

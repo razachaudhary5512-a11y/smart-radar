@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { InstallAppButton } from '@/lib/pwa';
+import { GetAndroidAppButton } from '@/lib/pwa';
 import {
   Ban,
   Briefcase,
@@ -209,7 +209,7 @@ function Sidebar() {
           <Plus className="h-5 w-5" /> New post
         </Link>
         <ConsoleButton />
-        <InstallAppButton />
+        <GetAndroidAppButton />
       </div>
       <nav className="mt-5 flex-1 space-y-6 overflow-y-auto px-3 no-scrollbar" aria-label="Main">
         <div className="space-y-0.5">
@@ -347,7 +347,7 @@ function MoreSheet({ open, onClose }: { open: boolean; onClose(): void }) {
   return (
     <Sheet open={open} onClose={onClose} title="More" size="sm">
       <ConsoleButton className="mb-4 h-12" />
-      <InstallAppButton className="btn-secondary mb-4 h-12 w-full" />
+      <GetAndroidAppButton className="btn-secondary mb-4 h-12 w-full" />
       {user && profile ? (
         <Link to="/profile" className="mb-4 flex items-center gap-3 rounded-2xl bg-surface-2 p-3">
           <Avatar name={profile.display_name || 'You'} src={profile.avatar_url} size={44} />

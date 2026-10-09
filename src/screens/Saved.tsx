@@ -27,7 +27,7 @@ export function Saved() {
 function SavedList() {
   const api = useApi();
   const { user } = useAuth();
-  const { coords } = useRadar();
+  const { coords, located } = useRadar();
   const { data, loading, error, refetch, setData } = useQuery(() => api.listBookmarks(user!.id), [api, user?.id], { scopes: ['bookmarks', 'posts'] });
 
   const onChange = useCallback(
@@ -60,7 +60,7 @@ function SavedList() {
   return (
     <div className="space-y-3">
       {data.map((p) => (
-        <PostCard key={p.id} post={{ ...p, distance_km: haversineKm(coords, p) }} onChange={onChange} />
+        <PostCard key={p.id} post={{ ...p, distance_km: located ? haversineKm(coords, p) : undefined }} onChange={onChange} />
       ))}
     </div>
   );

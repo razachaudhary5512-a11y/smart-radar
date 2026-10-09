@@ -105,7 +105,7 @@ function PostView({ post, onChange }: { post: PostWithRelations; onChange(p: Pos
   const cat = getCategory(post.category);
   const isOwner = user?.id === post.user_id;
   const closed = post.status === 'resolved' || isExpired(post);
-  const distance = haversineKm(radar.gpsCoords ?? radar.coords, post);
+  const distance = radar.located || radar.gpsCoords ? haversineKm(radar.gpsCoords ?? radar.coords, post) : null;
   const headline = headlineValue(post.category, post.metadata);
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -198,9 +198,11 @@ function PostView({ post, onChange }: { post: PostWithRelations; onChange(p: Pos
                   <MapPin className="h-4 w-4 text-ink-3" /> {post.location_label}
                 </span>
               )}
-              <span className="inline-flex items-center gap-1">
-                <Navigation className="h-4 w-4 text-ink-3" /> {formatDistance(distance)} away
-              </span>
+              {distance !== null && (
+                <span className="inline-flex items-center gap-1">
+                  <Navigation className="h-4 w-4 text-ink-3" /> {formatDistance(distance)} away
+                </span>
+              )}
               {post.expires_at && !closed && (
                 <span className="inline-flex items-center gap-1">
                   <Clock className="h-4 w-4 text-ink-3" /> {timeUntil(post.expires_at)}
@@ -337,7 +339,7 @@ function PostView({ post, onChange }: { post: PostWithRelations; onChange(p: Pos
             <div className="flex items-center justify-between gap-2 p-3.5">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">{post.location_label || 'Approximate location'}</p>
-                <p className="text-xs text-ink-3">{formatDistance(distance)} from you</p>
+                {distance !== null && <p className="text-xs text-ink-3">{formatDistance(distance)} from you</p>}
               </div>
               <a href={googleMapsLink(post)} target="_blank" rel="noreferrer" className="btn-secondary btn-sm">
                 Directions

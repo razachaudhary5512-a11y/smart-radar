@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(
     () =>
       onDataChange((scope) => {
-        if (scope === 'profile' || scope === 'admin') loadProfile(user);
+        if (scope === 'profile' || scope === 'admin' || scope === 'sync') loadProfile(user);
       }),
     [user, loadProfile]
   );

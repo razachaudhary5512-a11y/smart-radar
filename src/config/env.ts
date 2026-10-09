@@ -40,6 +40,8 @@ export const ENV = {
     appId: str(env.VITE_FIREBASE_APP_ID),
     vapidKey: str(env.VITE_FIREBASE_VAPID_KEY),
   },
+  /** Where the website's "Get the Android app" button points (Google Play listing). */
+  androidAppUrl: str(env.VITE_ANDROID_APP_URL),
   /** Cloudflare Turnstile site key (public). Set only after CAPTCHA is enabled in Supabase Auth. */
   turnstileSiteKey: str(env.VITE_TURNSTILE_SITE_KEY),
 } as const;

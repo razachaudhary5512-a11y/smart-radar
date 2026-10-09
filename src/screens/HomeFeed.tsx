@@ -491,21 +491,22 @@ function ConsoleStrip() {
   );
 }
 
-/** Phone browsers: suggest installing the web app (dismissible, remembered). */
+/** Android phone browsers: point to the Android app on Google Play (dismissible, remembered). */
 function InstallCard() {
-  const { canInstall, install } = usePwa();
-  const [dismissed, setDismissed] = useLocalStorage('sr_install_dismissed', false);
-  if (!canInstall || dismissed) return null;
+  const { androidAppUrl } = usePwa();
+  const [dismissed, setDismissed] = useLocalStorage('sr_getapp_dismissed', false);
+  const isAndroidPhone = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+  if (!androidAppUrl || !isAndroidPhone || dismissed) return null;
   return (
     <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary-600/25 bg-primary-600/5 p-3.5 lg:hidden">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white">
         <Download className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="font-bold text-ink">Install Be Alert</p>
-        <p className="text-[13px] text-ink-2">Opens full-screen from your home screen, loads instantly.</p>
+        <p className="font-bold text-ink">Get the Be Alert app</p>
+        <p className="text-[13px] text-ink-2">Same account and posts — with GPS alerts on the go.</p>
       </div>
-      <button className="btn-primary btn-sm shrink-0" onClick={install}>Install</button>
+      <a className="btn-primary btn-sm shrink-0" href={androidAppUrl} target="_blank" rel="noopener noreferrer">Get app</a>
       <button aria-label="Dismiss" className="icon-btn h-8 w-8 shrink-0" onClick={() => setDismissed(true)}>
         <X className="h-4 w-4" />
       </button>
