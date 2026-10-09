@@ -42,6 +42,8 @@ export const ENV = {
   },
   /** Where the website's "Get the Android app" button points (Google Play listing). */
   androidAppUrl: str(env.VITE_ANDROID_APP_URL),
+  /** Be Alert marketing website (linked from the menus). */
+  websiteUrl: str(env.VITE_WEBSITE_URL),
   /** Cloudflare Turnstile site key (public). Set only after CAPTCHA is enabled in Supabase Auth. */
   turnstileSiteKey: str(env.VITE_TURNSTILE_SITE_KEY),
 } as const;

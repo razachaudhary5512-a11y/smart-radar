@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { RefreshCw, Smartphone, WifiOff, X } from 'lucide-react';
+import { Globe, RefreshCw, Smartphone, WifiOff, X } from 'lucide-react';
 import { ENV } from '@/config/env';
 import { isNative } from '@/lib/native';
 
@@ -80,6 +80,16 @@ function OfflinePill() {
     <div role="status" className="fixed left-1/2 top-[calc(0.75rem+env(safe-area-inset-top))] z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full bg-ink px-4 py-2 text-xs font-semibold text-bg shadow-lift">
       <WifiOff className="h-3.5 w-3.5" /> You’re offline — new posts will load when you reconnect
     </div>
+  );
+}
+
+/** Link to the Be Alert website (shown in the web app and the Android app). */
+export function WebsiteLink({ className }: { className?: string }) {
+  if (!ENV.websiteUrl) return null;
+  return (
+    <a href={ENV.websiteUrl} target="_blank" rel="noopener noreferrer" className={className ?? 'flex items-center justify-center gap-1.5 text-xs font-semibold text-ink-3 hover:text-ink'}>
+      <Globe className="h-3.5 w-3.5" /> About Be Alert
+    </a>
   );
 }
 
