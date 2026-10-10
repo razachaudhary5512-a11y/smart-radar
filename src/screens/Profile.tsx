@@ -40,12 +40,19 @@ import { searchPlaces, type PlaceResult } from '@/services/maps';
 import { isFirebaseConfigured, requestNotificationPermission } from '@/services/firebase';
 import type { Profile as ProfileT, WatchedArea } from '@/lib/types';
 
+/**
+ * Push alerts and the daily digest need a server-side sender (Firebase Cloud Messaging +
+ * a scheduled job) that doesn't exist yet. Their settings stay hidden until it does, so
+ * the app never promises alerts it can't deliver.
+ */
+const NOTIFICATIONS_LIVE = false;
+
 const SECTIONS = [
   { id: 'account', label: 'Account', icon: UserRound },
   { id: 'verification', label: 'Verification', icon: ShieldCheck },
   { id: 'radar', label: 'Radar & places', icon: Radar },
   { id: 'feed', label: 'Feed preferences', icon: Pin },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
+  ...(NOTIFICATIONS_LIVE ? [{ id: 'notifications', label: 'Notifications', icon: Bell }] : []),
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'privacy', label: 'Privacy & data', icon: Download },
 ];
@@ -85,7 +92,7 @@ function ProfileContent() {
         <VerificationSection profile={profile} />
         <RadarSection profile={profile} />
         <FeedSection profile={profile} />
-        <NotificationSection profile={profile} />
+        {NOTIFICATIONS_LIVE && <NotificationSection profile={profile} />}
         <AppearanceSection />
         <PrivacySection profile={profile} />
         <button onClick={signOut} className="btn-outline w-full text-danger-600 lg:hidden">

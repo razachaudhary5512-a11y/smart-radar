@@ -41,12 +41,12 @@ export interface AuthApi {
   onChange(cb: (user: SessionUser | null) => void): () => void;
   /** Email one-time code (free alternative to SMS). */
   sendEmailOtp(email: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
-  verifyEmailOtp(email: string, code: string, kind?: EmailCodeKind): Promise<{ error: string | null }>;
+  verifyEmailOtp(email: string, code: string, kind?: EmailCodeKind, captchaToken?: string): Promise<{ error: string | null }>;
   /** Creates an email + password account. needsCode = a confirmation code was emailed. */
   signUpWithPassword(email: string, password: string, captchaToken?: string): Promise<{ error: string | null; needsCode: boolean; devCode?: string }>;
   /** unconfirmed = the account exists but its email was never confirmed. */
   signInWithPassword(email: string, password: string, captchaToken?: string): Promise<{ error: string | null; unconfirmed?: boolean }>;
-  resendSignupCode(email: string): Promise<{ error: string | null; devCode?: string }>;
+  resendSignupCode(email: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
   /** Emails a 6-digit password-reset code. */
   sendPasswordReset(email: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
   /** Sets a new password for the signed-in user (after a reset code, or from settings). */

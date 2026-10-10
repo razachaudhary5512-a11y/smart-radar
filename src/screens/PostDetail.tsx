@@ -99,7 +99,7 @@ function PostView({ post, onChange }: { post: PostWithRelations; onChange(p: Pos
   const toast = useToast();
   const navigate = useNavigate();
   const routerLoc = useRouterLocation();
-  const { user } = useAuth();
+  const { user, requireAuth } = useAuth();
   const radar = useRadar();
   const actions = usePostActions(post, onChange);
   const cat = getCategory(post.category);
@@ -120,6 +120,8 @@ function PostView({ post, onChange }: { post: PostWithRelations; onChange(p: Pos
     const f = cat.fields.find((x) => x.type === 'phone' && post.metadata[x.key]);
     return f ? String(post.metadata[f.key]) : null;
   }, [cat.fields, post.metadata]);
+  // Contact numbers are only sent to signed-in users (the database strips them for visitors).
+  const phoneHidden = !user && cat.fields.some((x) => x.type === 'phone');
 
   async function ownerAction(label: string, fn: () => Promise<void>) {
     setBusy(true);
@@ -277,8 +279,12 @@ function PostView({ post, onChange }: { post: PostWithRelations; onChange(p: Pos
 
           {!isOwner && (contactPhone || post.category !== 'community_poll') && (
             <div className="card p-4">
-              <p className="mb-3 font-bold text-ink">{contactPhone ? 'Contact' : 'Get in touch'}</p>
-              {contactPhone ? (
+              <p className="mb-3 font-bold text-ink">{contactPhone || phoneHidden ? 'Contact' : 'Get in touch'}</p>
+              {phoneHidden ? (
+                <button className="btn-primary w-full" onClick={() => requireAuth('Sign in to see the contact number.')}>
+                  <Phone className="h-4 w-4" /> Sign in to see contact number
+                </button>
+              ) : contactPhone ? (
                 <div className="grid grid-cols-2 gap-2">
                   <a href={telLink(contactPhone)} className="btn-primary">
                     <Phone className="h-4 w-4" /> Call

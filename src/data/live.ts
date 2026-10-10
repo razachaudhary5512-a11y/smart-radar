@@ -38,7 +38,7 @@ function fail(error: { message: string } | null): void {
   if (error) throw new Error(error.message);
 }
 
-type PostRow = Post & { poll_options?: PostWithRelations['poll_options']; comments?: { count: number }[] };
+type PostRow = Post & { poll_options?: PostWithRelations['poll_options']; comments?: { count: number }[]; public_metadata?: Post['metadata'] };
 
 async function authorsFor(ids: string[]): Promise<Map<string, PublicProfile>> {
   const unique = [...new Set(ids)].filter(Boolean);
@@ -70,7 +70,8 @@ async function hydrate(rows: PostRow[], viewer?: string | null): Promise<PostWit
   const pollMap = new Map((pollVotes?.data ?? []).map((p: { post_id: string; option_id: string }) => [p.post_id, p.option_id]));
   const rsvpRows = (rsvps?.data ?? []) as { post_id: string; user_id: string; status: 'going' | 'interested' }[];
 
-  return rows.map(({ comments, poll_options, ...p }) => {
+  return rows.map(({ comments, poll_options, public_metadata, ...p }) => {
+    if (!p.metadata) p.metadata = public_metadata ?? {};
     const rs = rsvpRows.filter((r) => r.post_id === p.id);
     return {
       ...p,
@@ -93,6 +94,31 @@ async function hydrate(rows: PostRow[], viewer?: string | null): Promise<PostWit
 }
 
 const POST_SELECT = '*, poll_options(*), comments(count)';
+// Signed-out visitors may not read posts.metadata (it can hold contact phone numbers);
+// they read public_metadata instead: the same JSON with the phone fields removed.
+const PUBLIC_POST_SELECT =
+  'id, user_id, category, title, description, public_metadata, image_urls, lat, lng, location_label, status, is_featured, ' +
+  'women_only, expires_at, confirm_count, resolve_count, report_count, upvotes, downvotes, created_at, updated_at, ' +
+  'scheduled_for, reposted_from_id, poll_options(*), comments(count)';
+let publicMetadataReady = true;
+
+/** Column list for post reads that signed-out visitors can also make. */
+async function feedSelect(): Promise<string> {
+  if (!publicMetadataReady) return POST_SELECT;
+  const { data } = await sb().auth.getSession();
+  return data.session ? POST_SELECT : PUBLIC_POST_SELECT;
+}
+
+/** Runs a post read; falls back to the old column list if the database has no public_metadata yet. */
+async function readPosts<T>(run: (select: string) => PromiseLike<{ data: T; error: { code?: string; message: string } | null }>) {
+  const select = await feedSelect();
+  const res = await run(select);
+  if (res.error?.code === '42703' && select === PUBLIC_POST_SELECT) {
+    publicMetadataReady = false;
+    return run(POST_SELECT);
+  }
+  return res;
+}
 
 // ── auth ────────────────────────────────────────────────────────────────────
 
@@ -118,8 +144,8 @@ const auth: AuthApi = {
     });
     return { error: error?.message ?? null };
   },
-  async verifyEmailOtp(email, code, kind = 'email') {
-    const { error } = await sb().auth.verifyOtp({ email: email.trim(), token: code, type: kind });
+  async verifyEmailOtp(email, code, kind = 'email', captchaToken) {
+    const { error } = await sb().auth.verifyOtp({ email: email.trim(), token: code, type: kind, options: { captchaToken } });
     return { error: error?.message ?? null };
   },
   async signUpWithPassword(email, password, captchaToken) {
@@ -138,8 +164,8 @@ const auth: AuthApi = {
     if (error && /not confirmed/i.test(error.message)) return { error: error.message, unconfirmed: true };
     return { error: error?.message ?? null };
   },
-  async resendSignupCode(email) {
-    const { error } = await sb().auth.resend({ type: 'signup', email: email.trim() });
+  async resendSignupCode(email, captchaToken) {
+    const { error } = await sb().auth.resend({ type: 'signup', email: email.trim(), options: { captchaToken } });
     return { error: error?.message ?? null };
   },
   async sendPasswordReset(email, captchaToken) {
@@ -286,19 +312,12 @@ const admin: AdminApi = {
       ? await sb().from('emergency_contacts').update(rest).eq('id', id)
       : await sb().from('emergency_contacts').insert(rest);
     fail(error);
-    await sb().from('admin_audit_log').insert({
-      admin_id: adminId,
-      action: id ? 'update_emergency_contact' : 'add_emergency_contact',
-      target_type: 'emergency_contact',
-      target_id: id ?? null,
-      details: { name: c.name, phone: c.phone },
-    });
+    // The audit-log row is written by a database trigger (admins can't insert log rows directly).
     emitChange('emergency');
   },
   async deleteEmergencyContact(adminId, id) {
     const { error } = await sb().from('emergency_contacts').delete().eq('id', id);
     fail(error);
-    await sb().from('admin_audit_log').insert({ admin_id: adminId, action: 'delete_emergency_contact', target_type: 'emergency_contact', target_id: id, details: {} });
     emitChange('emergency');
   },
   async auditLog() {
@@ -346,31 +365,33 @@ export const liveApi: DataApi = {
 
   async listPosts(q, viewer) {
     const bb = boundingBox(q.center, q.radiusKm);
-    let query = sb()
-      .from('posts')
-      .select(POST_SELECT)
-      .gte('lat', bb.minLat)
-      .lte('lat', bb.maxLat)
-      .gte('lng', bb.minLng)
-      .lte('lng', bb.maxLng)
-      .in('status', q.includeResolved ? ['active', 'resolved'] : ['active'])
-      .order('created_at', { ascending: false })
-      .limit(400);
-    if (q.category) query = query.eq('category', q.category);
-    if (q.search?.trim()) {
-      const s = q.search.trim().replace(/[%,()]/g, ' ');
-      query = query.or(`title.ilike.%${s}%,description.ilike.%${s}%,location_label.ilike.%${s}%`);
-    }
-    const { data, error } = await query;
+    const { data, error } = await readPosts((select) => {
+      let query = sb()
+        .from('posts')
+        .select(select)
+        .gte('lat', bb.minLat)
+        .lte('lat', bb.maxLat)
+        .gte('lng', bb.minLng)
+        .lte('lng', bb.maxLng)
+        .in('status', q.includeResolved ? ['active', 'resolved'] : ['active'])
+        .order('created_at', { ascending: false })
+        .limit(400);
+      if (q.category) query = query.eq('category', q.category);
+      if (q.search?.trim()) {
+        const s = q.search.trim().replace(/[%,()]/g, ' ');
+        query = query.or(`title.ilike.%${s}%,description.ilike.%${s}%,location_label.ilike.%${s}%`);
+      }
+      return query;
+    });
     fail(error);
-    const posts = await hydrate((data ?? []) as PostRow[], viewer);
+    const posts = await hydrate((data ?? []) as unknown as PostRow[], viewer);
     return finalizeFeed(posts, q);
   },
   async getPost(id, viewer) {
-    const { data, error } = await sb().from('posts').select(POST_SELECT).eq('id', id).maybeSingle();
+    const { data, error } = await readPosts((select) => sb().from('posts').select(select).eq('id', id).maybeSingle());
     fail(error);
     if (!data) return null;
-    const [p] = await hydrate([data as PostRow], viewer);
+    const [p] = await hydrate([data as unknown as PostRow], viewer);
     return p;
   },
   async listUserPosts(userId) {

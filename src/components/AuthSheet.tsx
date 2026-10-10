@@ -147,7 +147,7 @@ export function AuthSheet() {
     const res = await signInWithPassword(to, password, token);
     if (res.unconfirmed) {
       // Account was created but the email was never confirmed: send a fresh code.
-      const again = await resendSignupCode(to);
+      const again = await resendSignupCode(to, takeCaptcha());
       setBusy(false);
       if (again.error) return setError(friendlyError(again.error));
       toast.info('Please confirm your email first — we sent you a new code.');
@@ -187,7 +187,7 @@ export function AuthSheet() {
     setError(null);
     const res =
       codeKind === 'signup'
-        ? await resendSignupCode(target)
+        ? await resendSignupCode(target, takeCaptcha())
         : codeKind === 'recovery'
           ? await sendPasswordReset(target, takeCaptcha())
           : await sendEmailOtp(target, takeCaptcha());
@@ -203,7 +203,7 @@ export function AuthSheet() {
     if (code.length < MIN_CODE) return;
     setBusy(true);
     setError(null);
-    const res = await verifyEmailOtp(target, code, codeKind);
+    const res = await verifyEmailOtp(target, code, codeKind, takeCaptcha());
     if (res.error) {
       setBusy(false);
       setError(friendlyError(res.error));
