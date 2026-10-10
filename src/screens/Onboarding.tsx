@@ -63,7 +63,7 @@ export function Onboarding() {
 
         {/* Steps */}
         <div className="flex flex-1 flex-col px-6 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-7 lg:px-10 lg:py-10">
-          <div className="mb-6 flex gap-1.5" aria-label={`Step ${step + 1} of 3`}>
+          <div className="mb-6 flex gap-1.5" role="img" aria-label={`Step ${step + 1} of 3`}>
             {[0, 1, 2].map((i) => (
               <span key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', i <= step ? 'bg-primary-600' : 'bg-line')} />
             ))}
