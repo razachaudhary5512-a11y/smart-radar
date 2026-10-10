@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApi, onDataChange, type SessionUser } from '@/data';
+import type { AuthApi } from '@/data/api';
 import type { Profile, ProfilePatch } from './types';
 
 interface AuthContextValue {
@@ -12,7 +13,12 @@ interface AuthContextValue {
   /** App owner (super-admin). */
   isOwner: boolean;
   sendEmailOtp(email: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
-  verifyEmailOtp(email: string, code: string): Promise<{ error: string | null }>;
+  verifyEmailOtp: AuthApi['verifyEmailOtp'];
+  signUpWithPassword: AuthApi['signUpWithPassword'];
+  signInWithPassword: AuthApi['signInWithPassword'];
+  resendSignupCode: AuthApi['resendSignupCode'];
+  sendPasswordReset: AuthApi['sendPasswordReset'];
+  updatePassword: AuthApi['updatePassword'];
   adminSignIn(email: string, password: string, captchaToken?: string): Promise<{ error: string | null }>;
   signOut(): Promise<void>;
   deleteMyAccount(): Promise<{ error: string | null }>;
@@ -112,7 +118,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: Boolean(user && (profile?.is_admin || profile?.is_owner)),
       isOwner: Boolean(user && profile?.is_owner),
       sendEmailOtp: (e, t) => api.auth.sendEmailOtp(e, t),
-      verifyEmailOtp: (e, c) => api.auth.verifyEmailOtp(e, c),
+      verifyEmailOtp: (e, c, k) => api.auth.verifyEmailOtp(e, c, k),
+      signUpWithPassword: (e, pw, t) => api.auth.signUpWithPassword(e, pw, t),
+      signInWithPassword: (e, pw, t) => api.auth.signInWithPassword(e, pw, t),
+      resendSignupCode: (e) => api.auth.resendSignupCode(e),
+      sendPasswordReset: (e, t) => api.auth.sendPasswordReset(e, t),
+      updatePassword: (pw) => api.auth.updatePassword(pw),
       adminSignIn: (e, pw, t) => api.auth.adminSignIn(e, pw, t),
       signOut: async () => {
         await api.auth.signOut();

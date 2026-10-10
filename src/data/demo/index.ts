@@ -271,6 +271,9 @@ function setSession(u: SessionUser | null) {
 }
 
 const pendingOtp = new Map<string, number>();
+// Demo-only password accounts (kept in memory; demo data never leaves this browser).
+const demoPasswords = new Map<string, string>();
+const pendingSignup = new Map<string, string>();
 
 const auth: AuthApi = {
   async getSession() {
@@ -292,7 +295,7 @@ const auth: AuthApi = {
     pendingOtp.set(e, count + 1);
     return { error: null, devCode: DEMO_OTP };
   },
-  async verifyEmailOtp(email, code) {
+  async verifyEmailOtp(email, code, kind = 'email') {
     if (code !== DEMO_OTP) return { error: 'That code is incorrect. In demo mode the code is 123456.' };
     const e = email.trim().toLowerCase();
     const d = ensure();
@@ -316,7 +319,35 @@ const auth: AuthApi = {
     }
     if (!d.profiles[u.id]) d.profiles[u.id] = defaultProfile(u);
     save();
+    if (kind === 'signup' && pendingSignup.has(e)) {
+      demoPasswords.set(e, pendingSignup.get(e)!);
+      pendingSignup.delete(e);
+    }
     setSession({ id: u.id, phone: null, email: e });
+    return { error: null };
+  },
+  async signUpWithPassword(email, password) {
+    const e = email.trim().toLowerCase();
+    if (demoPasswords.has(e)) return { error: 'ACCOUNT_EXISTS', needsCode: false };
+    pendingSignup.set(e, password);
+    return { error: null, needsCode: true, devCode: DEMO_OTP };
+  },
+  async signInWithPassword(email, password) {
+    const e = email.trim().toLowerCase();
+    if (pendingSignup.has(e)) return { error: 'Email not confirmed', unconfirmed: true };
+    if (demoPasswords.get(e) !== password) return { error: 'Invalid login credentials' };
+    return auth.verifyEmailOtp(e, DEMO_OTP);
+  },
+  async resendSignupCode() {
+    return { error: null, devCode: DEMO_OTP };
+  },
+  async sendPasswordReset() {
+    return { error: null, devCode: DEMO_OTP };
+  },
+  async updatePassword(password) {
+    const me = await auth.getSession();
+    if (!me?.email) return { error: 'Please sign in again.' };
+    demoPasswords.set(me.email.toLowerCase(), password);
     return { error: null };
   },
   async adminSignIn(email, password) {

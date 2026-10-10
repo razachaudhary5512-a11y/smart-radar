@@ -109,8 +109,8 @@ const auth: AuthApi = {
     return () => data.subscription.unsubscribe();
   },
   async sendEmailOtp(email, captchaToken) {
-    // Supabase emails a sign-in link (and a 6-digit code if the template includes {{ .Token }}).
-    // The link brings the user back to the app, where the session is picked up automatically.
+    // Supabase emails a 6-digit code (see supabase/email-templates). Older link-style emails
+    // still bring the user back to the app, where the session is picked up automatically.
     const { error } = await sb().auth.signInWithOtp({
       email: email.trim(),
       // In the Android app the link must reopen the app, not the phone's browser.
@@ -118,8 +118,36 @@ const auth: AuthApi = {
     });
     return { error: error?.message ?? null };
   },
-  async verifyEmailOtp(email, code) {
-    const { error } = await sb().auth.verifyOtp({ email: email.trim(), token: code, type: 'email' });
+  async verifyEmailOtp(email, code, kind = 'email') {
+    const { error } = await sb().auth.verifyOtp({ email: email.trim(), token: code, type: kind });
+    return { error: error?.message ?? null };
+  },
+  async signUpWithPassword(email, password, captchaToken) {
+    const { data, error } = await sb().auth.signUp({
+      email: email.trim(),
+      password,
+      options: { captchaToken, emailRedirectTo: isNative ? APP_AUTH_CALLBACK : appUrl('') },
+    });
+    if (error) return { error: error.message, needsCode: false };
+    // Supabase hides whether an email is taken: an existing account comes back with no identities.
+    if (data.user && data.user.identities?.length === 0) return { error: 'ACCOUNT_EXISTS', needsCode: false };
+    return { error: null, needsCode: !data.session };
+  },
+  async signInWithPassword(email, password, captchaToken) {
+    const { error } = await sb().auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken } });
+    if (error && /not confirmed/i.test(error.message)) return { error: error.message, unconfirmed: true };
+    return { error: error?.message ?? null };
+  },
+  async resendSignupCode(email) {
+    const { error } = await sb().auth.resend({ type: 'signup', email: email.trim() });
+    return { error: error?.message ?? null };
+  },
+  async sendPasswordReset(email, captchaToken) {
+    const { error } = await sb().auth.resetPasswordForEmail(email.trim(), { captchaToken });
+    return { error: error?.message ?? null };
+  },
+  async updatePassword(password) {
+    const { error } = await sb().auth.updateUser({ password });
     return { error: error?.message ?? null };
   },
   async adminSignIn(email, password, captchaToken) {

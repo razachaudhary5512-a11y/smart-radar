@@ -40,7 +40,7 @@ export function PrivacyPolicy() {
       <section>
         <h2>What we collect</h2>
         <ul>
-          <li><strong>Account:</strong> your email address (used to sign in with a one-time link or code) and the display name you choose.</li>
+          <li><strong>Account:</strong> your email address (used to sign in with your password or a one-time email code) and the display name you choose.</li>
           <li><strong>Location:</strong> with your permission, your device location is used to show posts within the radius you pick (1–50 km) and to place
             posts you create on the map. You can instead choose a city manually. We do not track your location in the background.</li>
           <li><strong>Content you post:</strong> posts, photos, comments, votes, RSVPs, bookmarks and business listings.</li>
