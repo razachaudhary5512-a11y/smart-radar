@@ -72,6 +72,19 @@ export async function onDeepLink(handler: (url: string) => void): Promise<() => 
   return () => handle.remove();
 }
 
+/** Opens a URL in the phone's browser (a Chrome custom tab on Android). */
+export async function openExternal(url: string) {
+  const { Browser } = await import('@capacitor/browser');
+  await Browser.open({ url });
+}
+
+/** Closes the browser tab opened by openExternal, if it's still showing. */
+export async function closeExternal() {
+  if (!isNative) return;
+  const { Browser } = await import('@capacitor/browser');
+  await Browser.close().catch(() => {});
+}
+
 /** Match the Android status bar to the app theme. */
 export async function syncStatusBar(dark: boolean) {
   if (!isNative) return;

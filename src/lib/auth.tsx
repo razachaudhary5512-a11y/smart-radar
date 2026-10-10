@@ -20,6 +20,7 @@ interface AuthContextValue {
   sendPasswordReset: AuthApi['sendPasswordReset'];
   updatePassword: AuthApi['updatePassword'];
   adminSignIn(email: string, password: string, captchaToken?: string): Promise<{ error: string | null }>;
+  signInWithGoogle(): Promise<{ error: string | null }>;
   signOut(): Promise<void>;
   deleteMyAccount(): Promise<{ error: string | null }>;
   refreshProfile(): Promise<void>;
@@ -47,7 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        setProfile(await api.auth.getProfile(u.id));
+        const p = await api.auth.getProfile(u.id);
+        // First Google sign-in: use the Google account name instead of asking for one.
+        if (p && !p.display_name && u.name) {
+          await api.auth.updateProfile(u.id, { display_name: u.name.slice(0, 40) });
+          p.display_name = u.name.slice(0, 40);
+        }
+        setProfile(p);
       } catch (e) {
         console.warn('[Be Alert] Could not load profile', e);
       }
@@ -125,6 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sendPasswordReset: (e, t) => api.auth.sendPasswordReset(e, t),
       updatePassword: (pw) => api.auth.updatePassword(pw),
       adminSignIn: (e, pw, t) => api.auth.adminSignIn(e, pw, t),
+      signInWithGoogle: () => api.auth.signInWithGoogle(),
       signOut: async () => {
         await api.auth.signOut();
         setUser(null);

@@ -9,7 +9,7 @@ import { emitChange } from './events';
 import { compressImage } from './images';
 import { requireSupabase } from '@/lib/supabase';
 import { appUrl } from '@/config/env';
-import { APP_AUTH_CALLBACK, isNative } from '@/lib/native';
+import { APP_AUTH_CALLBACK, isNative, openExternal } from '@/lib/native';
 import { boundingBox } from '@/lib/location';
 import { uid } from '@/lib/format';
 import { DEFAULT_SETTINGS, type AppSettings } from '@/lib/types';
@@ -122,8 +122,17 @@ async function readPosts<T>(run: (select: string) => PromiseLike<{ data: T; erro
 
 // ── auth ────────────────────────────────────────────────────────────────────
 
-const toSession = (u: { id: string; phone?: string | null; email?: string | null } | null | undefined): SessionUser | null =>
-  u ? { id: u.id, phone: u.phone ? `+${u.phone.replace(/^\+/, '')}` : null, email: u.email ?? null } : null;
+const toSession = (
+  u: { id: string; phone?: string | null; email?: string | null; user_metadata?: Record<string, unknown> } | null | undefined
+): SessionUser | null =>
+  u
+    ? {
+        id: u.id,
+        phone: u.phone ? `+${u.phone.replace(/^\+/, '')}` : null,
+        email: u.email ?? null,
+        name: String(u.user_metadata?.full_name ?? u.user_metadata?.name ?? '').trim() || null,
+      }
+    : null;
 
 const auth: AuthApi = {
   async getSession() {
@@ -174,6 +183,21 @@ const auth: AuthApi = {
   },
   async updatePassword(password) {
     const { error } = await sb().auth.updateUser({ password });
+    return { error: error?.message ?? null };
+  },
+  async signInWithGoogle() {
+    if (isNative) {
+      // Google refuses sign-in inside an embedded WebView, so the Android app opens the
+      // system browser; Google then sends the user back to the app via APP_AUTH_CALLBACK.
+      const { data, error } = await sb().auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: APP_AUTH_CALLBACK, skipBrowserRedirect: true },
+      });
+      if (error || !data.url) return { error: error?.message ?? 'Could not start Google sign-in.' };
+      await openExternal(data.url);
+      return { error: null };
+    }
+    const { error } = await sb().auth.signInWithOAuth({ provider: 'google', options: { redirectTo: appUrl('') } });
     return { error: error?.message ?? null };
   },
   async adminSignIn(email, password, captchaToken) {

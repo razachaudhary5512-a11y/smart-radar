@@ -33,6 +33,7 @@ export function AuthSheet() {
     resendSignupCode,
     sendPasswordReset,
     updatePassword,
+    signInWithGoogle,
   } = useAuth();
   const api = useApi();
   const toast = useToast();
@@ -160,6 +161,15 @@ export function AuthSheet() {
     return finish();
   }
 
+  async function google() {
+    setBusy(true);
+    setError(null);
+    const res = await signInWithGoogle();
+    // On success the page goes to Google (web) or the browser opens (Android).
+    setBusy(false);
+    if (res.error) setError(friendlyError(res.error));
+  }
+
   async function sendLoginCode() {
     const to = checkEmail();
     if (!to) return;
@@ -264,7 +274,14 @@ export function AuthSheet() {
             <h2 className="text-xl font-extrabold tracking-tight text-ink">{mode === 'signup' ? 'Create your Be Alert account' : 'Sign in to Be Alert'}</h2>
             <p className="mt-1.5 text-sm text-ink-2">{authPrompt.reason ?? 'Post, vote and connect with neighbours.'}</p>
 
-            <div role="tablist" aria-label="Sign in or create account" className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
+            <button type="button" onClick={google} disabled={busy} className="btn-secondary mt-5 h-12 w-full gap-3 text-[15px]">
+              <GoogleLogo /> Continue with Google
+            </button>
+            <div className="my-4 flex items-center gap-3 text-xs font-semibold text-ink-3">
+              <span className="h-px flex-1 bg-line" /> or use your email <span className="h-px flex-1 bg-line" />
+            </div>
+
+            <div role="tablist" aria-label="Sign in or create account" className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
               {(['signin', 'signup'] as Mode[]).map((m) => (
                 <button
                   key={m}
@@ -421,6 +438,17 @@ export function AuthSheet() {
   );
 }
 
+function GoogleLogo() {
+  return (
+    <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+    </svg>
+  );
+}
+
 /** Turn Supabase's technical auth errors into plain language. */
 function friendlyError(msg: string): string {
   if (/invalid login credentials/i.test(msg)) return 'Wrong email or password. Try again, or tap “Forgot password?”.';
@@ -430,6 +458,7 @@ function friendlyError(msg: string): string {
   if (/expired|invalid|token/i.test(msg)) return 'That code is wrong or has expired. Tap “Send a new code”.';
   if (/signups? not allowed|disabled/i.test(msg)) return 'New accounts are paused right now. Please try again later.';
   if (/captcha/i.test(msg)) return 'Security check failed. Please try again.';
+  if (/provider is not enabled|unsupported provider/i.test(msg)) return 'Google sign-in isn’t switched on yet. Please use your email for now.';
   if (/fetch|network/i.test(msg)) return 'No internet connection. Check your connection and try again.';
   return msg;
 }

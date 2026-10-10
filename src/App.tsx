@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { onDeepLink, registerBackButton } from '@/lib/native';
+import { onDeepLink, registerBackButton, closeExternal } from '@/lib/native';
 import { BackendProvider, useApi } from '@/data';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { SettingsProvider } from '@/lib/settings';
@@ -64,6 +64,7 @@ function DeepLinkAuth() {
     onDeepLink(async (url) => {
       const { completeAuthFromUrl } = await import('@/data/live');
       const res = await completeAuthFromUrl(url);
+      await closeExternal(); // the Google sign-in tab, if one is open
       if (res.error) {
         toast.error('Sign-in link didn’t work', res.error);
         return;

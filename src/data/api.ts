@@ -31,6 +31,8 @@ export interface SessionUser {
   id: string;
   phone: string | null;
   email: string | null;
+  /** Name from the sign-in provider (e.g. the Google account name), used to prefill the profile. */
+  name?: string | null;
 }
 
 /** Which email a 6-digit code came from: code sign-in, new-account confirmation, or password reset. */
@@ -51,6 +53,8 @@ export interface AuthApi {
   sendPasswordReset(email: string, captchaToken?: string): Promise<{ error: string | null; devCode?: string }>;
   /** Sets a new password for the signed-in user (after a reset code, or from settings). */
   updatePassword(password: string): Promise<{ error: string | null }>;
+  /** Google sign-in. Web: redirects away and back. Android: opens the system browser. */
+  signInWithGoogle(): Promise<{ error: string | null }>;
   adminSignIn(email: string, password: string, captchaToken?: string): Promise<{ error: string | null }>;
   signOut(): Promise<void>;
   /** Permanently deletes the signed-in user's account and everything they posted. */

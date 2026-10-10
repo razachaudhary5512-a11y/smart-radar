@@ -350,6 +350,9 @@ const auth: AuthApi = {
     demoPasswords.set(me.email.toLowerCase(), password);
     return { error: null };
   },
+  async signInWithGoogle() {
+    return { error: 'Google sign-in works in the live app only.' };
+  },
   async adminSignIn(email, password) {
     const e = email.trim().toLowerCase();
     const accounts: Record<string, string> = { [DEMO_ADMIN_EMAIL]: DEMO_ADMIN_PASSWORD, [DEMO_OWNER_EMAIL]: DEMO_OWNER_PASSWORD };
